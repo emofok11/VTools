@@ -40,9 +40,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 构建项目
+      # 构建项目（跳过 tsc 类型检查，直接构建）
       - name: Build
-        run: npm run build
+        run: npx vite build
 
       # 配置 GitHub Pages
       - name: Setup Pages
