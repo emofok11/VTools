@@ -1,0 +1,146 @@
+/* 认证门禁页样式 */
+.auth-gate-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #0f1923;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+}
+
+.auth-gate-card {
+  background: rgba(236, 232, 225, 0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(236, 232, 225, 0.08);
+  border-radius: 4px;
+  padding: 48px 40px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-gate-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #FF4655;
+}
+
+.auth-gate-title {
+  font-family: var(--font-tungsten);
+  color: #ECE8E1;
+  font-size: 96px;
+  font-weight: normal;
+  margin: 0 0 8px 0;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.auth-gate-subtitle {
+  font-family: var(--font-tungsten);
+  color: rgba(236, 232, 225, 0.4);
+  font-size: 14px;
+  margin: 0 0 32px 0;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.auth-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-gate-input-wrapper {
+  position: relative;
+}
+
+.auth-gate-input-label {
+  display: block;
+  color: rgba(236, 232, 225, 0.6);
+  font-size: 12px;
+  text-align: left;
+  margin-bottom: 8px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.auth-gate-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(236, 232, 225, 0.06);
+  border: 1px solid rgba(236, 232, 225, 0.12);
+  border-radius: 2px;
+  color: #ECE8E1;
+  font-size: 15px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.auth-gate-input::placeholder {
+  color: rgba(236, 232, 225, 0.25);
+}
+
+.auth-gate-input:focus {
+  border-color: #FF4655;
+  background: rgba(236, 232, 225, 0.08);
+  box-shadow: 0 0 0 3px rgba(255, 70, 85, 0.15);
+}
+
+.auth-gate-input.error {
+  border-color: #FF4655;
+  box-shadow: 0 0 0 3px rgba(255, 70, 85, 0.15);
+}
+
+.auth-gate-error {
+  color: #FF4655;
+  font-size: 12px;
+  text-align: left;
+  margin: -8px 0 0 0;
+  animation: shake 0.3s ease;
+  letter-spacing: 0.5px;
+}
+
+.auth-gate-btn {
+  font-family: var(--font-tungsten);
+  padding: 12px 24px;
+  background: #FF4655;
+  border: none;
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: normal;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.auth-gate-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(255, 70, 85, 0.4);
+  background: #e63e4c;
+}
+
+.auth-gate-btn:active {
+  transform: translateY(0);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
