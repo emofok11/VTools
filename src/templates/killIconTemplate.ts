@@ -368,8 +368,8 @@ export const killIconTemplate: TemplateDefinition = {
       suggestedWidth: 1386,
       suggestedHeight: 640,
       supportedFormats: ['png', 'jpg', 'psd'],
-      // 默认预填充：游戏界面截图（用户可替换或删除）
-      defaultImage: '/images/interface-1.png'
+      // 默认预填充：游戏界面截图（用户可替换或删除），使用 BASE_URL 确保部署路径正确
+      defaultImage: `${import.meta.env.BASE_URL}images/interface-1.png`
     },
     {
       id: 'interface-img-2',
@@ -425,7 +425,7 @@ label: '（一杀）',
       suggestedHeight: 256,
       supportedFormats: ['png', 'jpg', 'psd'],
       // 默认预填充：一杀图标（用户可替换或删除）
-      defaultImage: '/images/icon-1.png'
+      defaultImage: `${import.meta.env.BASE_URL}images/icon-1.png`
     },
     {
       id: 'icon-img-2',
@@ -440,7 +440,7 @@ label: '（二杀）',
       suggestedHeight: 256,
       supportedFormats: ['png', 'jpg', 'psd'],
       // 默认预填充：二杀图标（用户可替换或删除）
-      defaultImage: '/images/icon-2.png'
+      defaultImage: `${import.meta.env.BASE_URL}images/icon-2.png`
     },
     {
       id: 'icon-img-3',
@@ -455,7 +455,7 @@ label: '（三杀）',
       suggestedHeight: 256,
       supportedFormats: ['png', 'jpg', 'psd'],
       // 默认预填充：三杀图标（用户可替换或删除）
-      defaultImage: '/images/icon-3.png'
+      defaultImage: `${import.meta.env.BASE_URL}images/icon-3.png`
     },
     {
       id: 'icon-img-4',
@@ -470,7 +470,7 @@ label: '（四杀）',
       suggestedHeight: 256,
       supportedFormats: ['png', 'jpg', 'psd'],
       // 默认预填充：四杀图标（用户可替换或删除）
-      defaultImage: '/images/icon-4.png'
+      defaultImage: `${import.meta.env.BASE_URL}images/icon-4.png`
     },
     {
       id: 'icon-img-5',
@@ -485,7 +485,7 @@ label: '（五杀）',
       suggestedHeight: 256,
       supportedFormats: ['png', 'jpg', 'psd'],
       // 默认预填充：五杀图标（用户可替换或删除）
-      defaultImage: '/images/icon-5.png'
+      defaultImage: `${import.meta.env.BASE_URL}images/icon-5.png`
     },
     {
       id: 'icon-img-6',
@@ -500,7 +500,7 @@ label: '（六杀·精准一击）',
       suggestedHeight: 256,
       supportedFormats: ['png', 'jpg', 'psd'],
       // 默认预填充：六杀精准一击图标（用户可替换或删除）
-      defaultImage: '/images/icon-6.png'
+      defaultImage: `${import.meta.env.BASE_URL}images/icon-6.png`
     }
   ],
   

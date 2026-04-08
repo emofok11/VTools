@@ -408,9 +408,9 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           <p>设计要求遵守合规性与底线，需要对有风险的元素内容进行排查。</p>
           <p>包括但不限于：地缘政治、敏感历史、不良导向、性别种族歧视、血腥暴力、恐怖、涉外、违禁、抄袭等内容。</p>
           <p className="warning-text">常见如下图涉及地图、宗教符号、空白元素、血腥暴力的元素需规避使用。</p>
-          {/* 固定内置合规示例图，不需要用户上传 */}
+          {/* 固定内置合规示例图，使用 BASE_URL 确保部署路径正确 */}
           <img
-            src="/compliance-examples.png"
+            src={`${import.meta.env.BASE_URL}compliance-examples.png`}
             alt="合规性风险示例"
             className="compliance-examples-img"
           />
