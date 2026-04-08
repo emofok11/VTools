@@ -80,7 +80,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onEnterModule }) => {
               >
                 <div className="module-card-accent"></div>
                 <div className="module-card-body">
-                  <div className="module-icon">{module.icon}</div>
                   <div className="module-info">
                     <h3 className="module-name">{module.name}</h3>
                     <p className="module-desc">{module.description}</p>
