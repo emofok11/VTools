@@ -466,9 +466,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         style={{ display: 'none' }}
       />
       <div className="dropzone-content">
-        <div className="upload-icon">📁</div>
+        <div className="upload-icon">↑</div>
         <p className="upload-text">点击或拖拽上传图片</p>
-        <p className="upload-hint paste-hint">✨ 或悬停选中后按 Ctrl+V 粘贴</p>
+        <p className="upload-hint paste-hint">* 或悬停选中后按 Ctrl+V 粘贴</p>
         {slot.supportedFormats && (
           <p className="upload-hint">支持格式: {slot.supportedFormats.join(', ')}</p>
         )}
@@ -534,7 +534,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
                   onClick={() => handleSwitchToMosaic()}
                   title="马赛克工具（在图片上拖拽选择马赛克区域）"
                 >
-                  � 马赛克 {savedMosaicRegions.length > 0 && '✓'}
+                  ▦ 马赛克 {savedMosaicRegions.length > 0 && '✓'}
                 </button>
                 {/* 已保存马赛克数量角标 */}
                 {savedMosaicRegions.length > 0 && (

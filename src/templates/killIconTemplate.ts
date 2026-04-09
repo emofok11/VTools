@@ -4,6 +4,7 @@
 
 import { TemplateDefinition } from '../types/template';
 import { templateRegistry } from '../lib/templateRegistry';
+import { getTodayVersion } from '../lib/templateUtils';
 
 export const killIconTemplate: TemplateDefinition = {
   id: 'template-kill-icon-001',
@@ -16,7 +17,7 @@ export const killIconTemplate: TemplateDefinition = {
   figmaNodeId: '26-41378',
   createdAt: '2025-01-01T00:00:00.000Z',
   updatedAt: '2025-10-09T00:00:00.000Z',
-  version: 'V / 2025.10.09',
+  version: getTodayVersion(),
   
   // 文字字段配置
   textFields: [
@@ -33,8 +34,8 @@ export const killIconTemplate: TemplateDefinition = {
     {
       id: 'version-info',
       label: '版本信息',
-      placeholder: 'V / 2025.10.09',
-      defaultValue: 'V / 2025.10.09',
+      placeholder: getTodayVersion(),
+      defaultValue: getTodayVersion(),
       required: false,
       maxLength: 30,
       style: { fontSize: 14, fontWeight: '400', color: '#666666' }

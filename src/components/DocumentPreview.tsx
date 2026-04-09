@@ -388,7 +388,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           visibleModules.map((module, index) => renderModule(module, index))
         ) : (
           <div className="preview-empty-state">
-            <div className="preview-empty-icon">🗂️</div>
+            <div className="preview-empty-icon">☐</div>
             <h3>当前还没有可预览的内容</h3>
             <p>请先补充文字说明或上传参考图片，预览页会自动生成更完整的版面效果。</p>
           </div>
@@ -398,7 +398,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       {/* 附录 */}
       <div className="preview-appendix">
         <div className="preview-appendix-header">
-          <span className="appendix-icon">⚠️</span>
+          <span className="appendix-icon">!</span>
           <div>
             <span className="appendix-title">附录 - 合规性要求</span>
             <p className="appendix-subtitle">提交前请再次检查是否存在风险元素或不当表达。</p>
@@ -410,7 +410,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           <p className="warning-text">常见如下图涉及地图、宗教符号、空白元素、血腥暴力的元素需规避使用。</p>
           {/* 固定内置合规示例图，使用 BASE_URL 确保部署路径正确 */}
           <img
-            src={`${import.meta.env.BASE_URL}compliance-examples.png`}
+            src={`${import.meta.env.BASE_URL}images/compliance-examples.png`}
             alt="合规性风险示例"
             className="compliance-examples-img"
           />
@@ -433,7 +433,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               <h2>文档预览</h2>
               <p>当前内容已按正式模板版式排版</p>
             </div>
-            <button className="preview-close-btn" onClick={onClose}>✕</button>
+            <button className="preview-close-btn" onClick={onClose}>×</button>
           </div>
           <div className="preview-modal-body">{content}</div>
           <div className="preview-modal-footer">

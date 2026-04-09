@@ -10,6 +10,9 @@ import CreateTemplateModal from './CreateTemplateModal';
 import { DocumentPreview } from './DocumentPreview';
 import './TemplateLibrary.css';
 
+// 固定模版ID列表（内置模版不可删除）
+const BUILT_IN_TEMPLATE_IDS = ['template-kill-icon-001', 'template-list-table-001'];
+
 interface TemplateLibraryProps {
   onSelectTemplate?: (template: TemplateDefinition) => void;
   onBackToDashboard?: () => void;
@@ -19,7 +22,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
   onSelectTemplate,
   onBackToDashboard
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | 'all' | 'history'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | 'all' | 'history' | 'built-in' | 'custom'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDefinition | null>(null);
   const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<TemplateHistoryRecord | null>(null);
@@ -99,7 +102,11 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
     let result = templateRegistry.getAll();
     
     // 分类过滤
-    if (selectedCategory !== 'all') {
+    if (selectedCategory === 'built-in') {
+      result = result.filter(t => BUILT_IN_TEMPLATE_IDS.includes(t.id));
+    } else if (selectedCategory === 'custom') {
+      result = result.filter(t => !BUILT_IN_TEMPLATE_IDS.includes(t.id));
+    } else if (selectedCategory !== 'all' && selectedCategory !== 'history') {
       result = result.filter(t => t.category === selectedCategory);
     }
     
@@ -578,23 +585,28 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
             ← 返回
           </button>
         )}
-        <h1 className="module-page-title">UI发包模版</h1>
+        <h1 className="module-page-title">发包模版</h1>
       </div>
       <div className="module-topbar-right">
         <div className="search-box">
+          <span className="search-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </span>
           <input
             type="text"
             placeholder="搜索模版..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <span className="search-icon">🔍</span>
         </div>
       </div>
     </div>
   );
 
-  // 渲染分类标签（简化：只保留全部和历史记录）
+  // 渲染分类标签
   const renderCategoryTabs = () => (
     <div className="category-tabs">
       <button
@@ -604,17 +616,30 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
         全部模版
       </button>
       <button
+        className={`tab-btn ${selectedCategory === 'built-in' ? 'active' : ''}`}
+        onClick={() => setSelectedCategory('built-in')}
+      >
+        固定模版
+      </button>
+      <button
+        className={`tab-btn ${selectedCategory === 'custom' ? 'active' : ''}`}
+        onClick={() => setSelectedCategory('custom')}
+      >
+        自定义模版
+      </button>
+      <button
         className={`tab-btn ${selectedCategory === 'history' ? 'active' : ''}`}
         onClick={() => setSelectedCategory('history')}
       >
-        📋 历史记录
+☰ 历史记录
       </button>
     </div>
   );
 
-  // 删除模版
+  // 删除模版（固定模版不可删除）
   const handleDeleteTemplate = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (BUILT_IN_TEMPLATE_IDS.includes(id)) return;
     if (window.confirm('确定要删除这个模版吗？')) {
       templateRegistry.unregister(id);
       // 强制重新渲染列表
@@ -635,7 +660,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
           <img src={template.thumbnail} alt={template.name} />
         ) : (
           <div className="thumbnail-placeholder">
-            <span className="placeholder-icon">🎨</span>
+<span className="placeholder-icon">◆</span>
           </div>
         )}
       </div>
@@ -644,13 +669,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
         <p className="card-description">{template.description}</p>
         <div className="card-meta">
           <span className="card-category">{categoryLabels[template.category]}</span>
-          {/* 版本号直接显示，template.version 已含格式如 "V / 2025.10.09" */}
-          <span className="card-version">{template.version}</span>
-        </div>
-        <div className="card-tags">
-          {template.tags.slice(0, 3).map(tag => (
-            <span key={tag} className="tag">{tag}</span>
-          ))}
         </div>
       </div>
       <div className="card-footer">
@@ -659,13 +677,15 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
           更新于 {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' })}
         </span>
         <div className="card-actions">
-          <button 
-            className="btn-delete-history" 
-            onClick={(e) => handleDeleteTemplate(e, template.id)}
-            title="删除模版"
-          >
-            🗑️
-          </button>
+          {!BUILT_IN_TEMPLATE_IDS.includes(template.id) && (
+            <button 
+              className="btn-delete-history" 
+              onClick={(e) => handleDeleteTemplate(e, template.id)}
+              title="删除模版"
+            >
+              🗑️
+            </button>
+          )}
           <button className="btn-use">使用模版</button>
         </div>
       </div>
@@ -727,19 +747,41 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
       {renderModuleHeader()}
       {renderCategoryTabs()}
 
-      <div className="templates-grid">
-        {selectedCategory === 'history' ? (
-          historyRecords.length > 0 ? (
+      {selectedCategory === 'history' ? (
+        <div className="templates-grid">
+          {historyRecords.length > 0 ? (
             historyRecords.map(renderHistoryCard)
           ) : (
             <div className="empty-state">
               <span className="empty-icon">🕒</span>
               <p>暂无历史记录</p>
             </div>
-          )
-        ) : (
-          <>
-            {/* 新建模版卡片 - 始终显示在第一个 */}
+          )}
+        </div>
+      ) : selectedCategory === 'built-in' ? (
+        /* 固定模版Tab：只显示固定模版 */
+        <div className="template-section">
+          <div className="template-section-header">
+            <h3 className="template-section-title">固定模版</h3>
+          </div>
+          <div className="templates-grid">
+            {templates.map(renderTemplateCard)}
+            {templates.length === 0 && (
+              <div className="empty-state">
+                <span className="empty-icon">📭</span>
+                <p>暂无固定模版</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : selectedCategory === 'custom' ? (
+        /* 自定义模版Tab：只显示自定义模版 + 新建卡片 */
+        <div className="template-section">
+          <div className="template-section-header">
+            <h3 className="template-section-title">自定义模版</h3>
+          </div>
+          <div className="templates-grid">
+            {templates.map(renderTemplateCard)}
             <div
               className="template-card create-card"
               onClick={() => setShowCreateModal(true)}
@@ -752,16 +794,47 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
                 <p className="card-description">从 Figma 导入或上传设计稿创建新模版</p>
               </div>
             </div>
-            {templates.map(renderTemplateCard)}
-          </>
-        )}
-        {selectedCategory !== 'history' && templates.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-icon">📭</span>
-            <p>暂无模版</p>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        /* 全部模版Tab：分区展示 */
+        <>
+          {/* 固定模版分区 */}
+          {templates.filter(t => BUILT_IN_TEMPLATE_IDS.includes(t.id)).length > 0 && (
+            <div className="template-section">
+              <div className="template-section-header">
+                <h3 className="template-section-title">固定模版</h3>
+              </div>
+              <div className="templates-grid">
+                {templates.filter(t => BUILT_IN_TEMPLATE_IDS.includes(t.id)).map(renderTemplateCard)}
+              </div>
+            </div>
+          )}
+
+          {/* 自定义模版分区 */}
+          <div className="template-section">
+            <div className="template-section-header">
+              <h3 className="template-section-title">自定义模版</h3>
+            </div>
+            <div className="templates-grid">
+              {templates.filter(t => !BUILT_IN_TEMPLATE_IDS.includes(t.id)).map(renderTemplateCard)}
+              {/* 新建模版卡片 - 始终显示在最后 */}
+              <div
+                className="template-card create-card"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <div className="card-thumbnail create-thumbnail">
+                  <span className="create-icon">＋</span>
+                </div>
+                <div className="card-content">
+                  <h3 className="card-title">新建模版</h3>
+                  <p className="card-description">从 Figma 导入或上传设计稿创建新模版</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -850,10 +923,10 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
             </div>
             <div className="export-modal-footer">
               <button className="btn-export-png" onClick={handleExportPNG}>
-                📷 导出PNG图片
+⎙ 导出PNG图片
               </button>
               <button className="btn-export-json" onClick={handleExportJSON}>
-                � 导出JSON数据
+                ↗ 导出JSON数据
               </button>
               <button className="btn-cancel" onClick={() => setExportData(null)}>
                 取消

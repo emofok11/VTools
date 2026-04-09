@@ -3,6 +3,7 @@ import { TextFieldConfig, ImageSlotConfig, ImageData, TemplateDefinition } from 
 import ImageUploader from './ImageUploader';
 import DocumentPreview from './DocumentPreview';
 import DeleteButton from './DeleteButton';
+import { getTodayVersion } from '../lib/templateUtils';
 import './KillIconEditor.css';
 
 interface KillIconEditorProps {
@@ -236,8 +237,7 @@ export const KillIconEditor: React.FC<KillIconEditorProps> = ({
     return (
       <div key={module.id} id={module.id} className="module-section">
         <div className="module-header" style={{ borderLeftColor: module.color }}>
-          <span className="module-icon">📋</span>
-          <h3 className="module-title">{module.title}</h3>
+<h3 className="module-title">{module.title}</h3>
         </div>
         
         <div className="module-content">
@@ -333,27 +333,26 @@ export const KillIconEditor: React.FC<KillIconEditorProps> = ({
             </button>
           )}
           <div className="template-badge">
-            <span className="badge-icon">🎯</span>
             <span className="badge-text">{template.name}</span>
+            {/* 实时显示用户输入的版本信息，fallback 到模板默认版本 */}
+            <div className="version-tag">{textValues['version-info'] || template.version}</div>
           </div>
-          {/* 实时显示用户输入的版本信息，fallback 到模板默认版本 */}
-          <div className="version-tag">{textValues['version-info'] || template.version}</div>
           {selectedSlotId && (
             <div className="selected-slot-badge">
-              📋 已选中: {template.imageSlots.find(s => s.id === selectedSlotId)?.label || selectedSlotId}
+☰ 已选中: {template.imageSlots.find(s => s.id === selectedSlotId)?.label || selectedSlotId}
               <span className="paste-hint-inline">可粘贴图片</span>
             </div>
           )}
         </div>
         <div className="header-actions">
           <button className="btn-save" onClick={handleSave}>
-            💾 保存草稿
+保存草稿
           </button>
           <button className="btn-preview" onClick={() => setShowPreview(true)}>
-            👁️ 预览文档
+预览文档
           </button>
           <button className="btn-export" onClick={handleExport}>
-            📤 生成发包文档
+↗ 生成发包文档
           </button>
         </div>
       </div>
@@ -397,7 +396,7 @@ export const KillIconEditor: React.FC<KillIconEditorProps> = ({
                   className="field-input version-input"
                   value={textValues['version-info'] || ''}
                   onChange={(e) => handleTextChange('version-info', e.target.value)}
-                  placeholder="V / 2025.10.09"
+                  placeholder={getTodayVersion()}
                 />
               </div>
             </div>
@@ -409,7 +408,7 @@ export const KillIconEditor: React.FC<KillIconEditorProps> = ({
           {/* 附录 */}
           <div className="appendix-section">
             <div className="appendix-header">
-              <span className="appendix-icon">⚠️</span>
+<span className="appendix-icon">△</span>
               <h3>附录 - 合规性要求</h3>
             </div>
             <div className="appendix-content">

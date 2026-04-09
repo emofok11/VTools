@@ -1,9 +1,10 @@
 /* 击杀图标编辑器样式 - 紧凑美观版 */
+/* 配色规范：红 #FF4655 | 黑 #0f1923 | 白 #ECE8E1 */
 
 .kill-icon-editor {
   height: 100vh;
   overflow: hidden;
-  background: #f0f2f5; /* 更柔和的背景色 */
+  background: #0f1923;
   display: flex;
   flex-direction: column;
 }
@@ -13,11 +14,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 24px; /* 从 20px 32px 压缩到 10px 24px */
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  padding: 0 24px;
+  height: 56px;
+  background: #FF4655;
   color: white;
-  box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3);
-  flex-shrink: 0; /* 防止头部被压缩 */
+  box-shadow: 0 2px 12px rgba(255, 70, 85, 0.3);
+  flex-shrink: 0;
   border-bottom: none;
 }
 
@@ -25,14 +27,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #52c41a, #73d13d);
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  padding: 4px 10px; /* 缩小 */
+  padding: 4px 10px;
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
   animation: fadeIn 0.3s ease;
-  box-shadow: 0 2px 6px rgba(82, 196, 26, 0.3);
+  box-shadow: none;
 }
 
 .paste-hint-inline {
@@ -50,49 +52,45 @@
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .btn-back-inline {
   padding: 5px 12px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.15);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-right: 4px;
+  letter-spacing: 0.5px;
 }
 
 .btn-back-inline:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.25);
   transform: translateX(-2px);
 }
 
 .template-badge {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px; /* 从 8px 16px 缩小 */
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-}
-
-.badge-icon {
-  font-size: 16px; /* 从 20px 缩小 */
+  gap: 4px;
 }
 
 .badge-text {
-  font-size: 15px; /* 从 18px 缩小 */
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 2px;
+  padding: 0 4px;
 }
 
 .version-tag {
-  padding: 3px 10px; /* 从 4px 12px 缩小 */
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+  padding: 4px;
+  background: transparent;
+  border-radius: 4px;
   font-size: 11px;
 }
 
@@ -123,17 +121,17 @@
 }
 
 .btn-preview {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.2);
   color: white;
 }
 
 .btn-preview:hover {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .btn-export {
-  background: white;
-  color: #667eea;
+  background: #ECE8E1;
+  color: #FF4655;
 }
 
 .btn-export:hover {
@@ -147,28 +145,28 @@
   flex-direction: row;
   flex: 1;
   overflow: hidden;
-  height: calc(100vh - 52px); /* 减去头部高度，撑满剩余空间 */
+  height: calc(100vh - 56px); /* 减去头部高度，撑满剩余空间 */
   padding: 0;
   gap: 0;
 }
 
 /* ===== 侧边导航 ===== */
 .sidebar-nav {
-  width: 160px; /* 从 220px 缩小 */
-  background: white;
-  border-right: 1px solid #e8e8e8;
-  padding: 12px 0; /* 从 20px 缩小 */
+  width: 160px;
+  background: #1a2634;
+  border-right: 1px solid rgba(236, 232, 225, 0.1);
+  padding: 12px 0;
   overflow-y: auto;
   flex-shrink: 0;
 }
 
 .nav-item {
   display: block;
-  padding: 8px 14px; /* 从 12px 20px 缩小 */
+  padding: 8px 14px;
   border-left: 3px solid transparent;
-  color: #666;
+  color: rgba(236, 232, 225, 0.5);
   text-decoration: none;
-  font-size: 13px; /* 从 14px 缩小 */
+  font-size: 13px;
   transition: all 0.2s ease;
   white-space: nowrap;
   overflow: hidden;
@@ -176,25 +174,27 @@
 }
 
 .nav-item:hover {
-  background: #f5f7fa;
-  color: #333;
-  border-left-color: inherit;
+  background: rgba(255, 70, 85, 0.1);
+  color: #ECE8E1;
+  border-left-color: #FF4655;
 }
 
 /* ===== 编辑区域 ===== */
 .editor-content {
   flex: 1;
-  padding: 16px 20px; /* 从 32px 大幅缩小 */
+  padding: 16px 20px;
   overflow-y: auto;
+  background: #0f1923;
 }
 
 /* ===== 基础信息区域 ===== */
 .basic-info-section {
-  background: white;
-  border-radius: 8px; /* 从 12px 缩小 */
-  padding: 14px 16px; /* 从 24px 缩小 */
-  margin-bottom: 12px; /* 从 24px 缩小 */
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  background: #1a2634;
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: none;
+  border: 1px solid rgba(236, 232, 225, 0.1);
 }
 
 .basic-info-row {
@@ -207,16 +207,19 @@
 }
 
 .basic-info-field .field-label {
-  font-size: 12px; /* 从 14px 缩小 */
+  font-size: 12px;
   font-weight: 500;
-  color: #555;
+  color: rgba(236, 232, 225, 0.6);
   margin-bottom: 5px;
 }
 
 .theme-name-input {
-  font-size: 14px; /* 从 16px 缩小 */
+  font-size: 14px;
   font-weight: 500;
-  padding: 7px 12px; /* 从 12px 16px 缩小 */
+  padding: 7px 12px;
+  background: #0f1923;
+  border-color: rgba(236, 232, 225, 0.15);
+  color: #ECE8E1;
 }
 
 .version-input {
@@ -225,32 +228,31 @@
 
 /* ===== 模块区域 ===== */
 .module-section {
-  background: white;
-  border-radius: 8px; /* 从 12px 缩小 */
-  margin-bottom: 10px; /* 从 24px 大幅缩小 */
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  background: #1a2634;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  box-shadow: none;
   overflow: hidden;
+  border: 1px solid rgba(236, 232, 225, 0.1);
 }
 
 .module-header {
   display: flex;
   align-items: center;
-  gap: 8px; /* 从 12px 缩小 */
-  padding: 10px 14px; /* 从 16px 20px 缩小 */
-  background: #fafafa;
-  border-left: 3px solid; /* 从 4px 缩小 */
-  border-bottom: 1px solid #f0f0f0;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(236, 232, 225, 0.05);
+  border-left: 3px solid;
+  border-bottom: 1px solid rgba(236, 232, 225, 0.08);
 }
 
-.module-icon {
-  font-size: 15px; /* 从 20px 缩小 */
-}
+/* module-icon 已移除 */
 
 .module-title {
   margin: 0;
-  font-size: 13px; /* 从 16px 缩小 */
+  font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: #ECE8E1;
 }
 
 .module-content {
@@ -259,35 +261,36 @@
 
 /* ===== 文字字段 ===== */
 .text-field-wrapper {
-  margin-bottom: 10px; /* 从 16px 缩小 */
+  margin-bottom: 10px;
 }
 
 .field-label {
   display: block;
-  font-size: 12px; /* 从 13px 缩小 */
-  color: #777;
-  margin-bottom: 4px; /* 从 6px 缩小 */
+  font-size: 12px;
+  color: rgba(236, 232, 225, 0.5);
+  margin-bottom: 4px;
 }
 
 .field-input {
   width: 100%;
-  padding: 7px 10px; /* 从 10px 14px 缩小 */
-  border: 1px solid #e8e8e8;
-  border-radius: 5px; /* 从 6px 缩小 */
-  font-size: 13px; /* 从 14px 缩小 */
-  color: #333;
+  padding: 7px 10px;
+  border: 1px solid rgba(236, 232, 225, 0.15);
+  border-radius: 4px;
+  font-size: 13px;
+  color: #ECE8E1;
+  background: #0f1923;
   transition: all 0.2s ease;
   box-sizing: border-box;
 }
 
 .field-input:hover {
-  border-color: #40a9ff;
+  border-color: rgba(255, 70, 85, 0.5);
 }
 
 .field-input:focus {
   outline: none;
-  border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1); /* 从 3px 缩小 */
+  border-color: #FF4655;
+  box-shadow: 0 0 0 2px rgba(255, 70, 85, 0.15);
 }
 
 /* ===== 图片坑位网格 ===== */
@@ -300,11 +303,11 @@
 
 /* ===== 附录区域 ===== */
 .appendix-section {
-  background: #fff8e1;
-  border: 1px solid #ffcdd2;
-  border-radius: 8px; /* 从 12px 缩小 */
-  padding: 12px 14px; /* 从 20px 缩小 */
-  margin-top: 16px; /* 从 32px 缩小 */
+  background: rgba(255, 70, 85, 0.08);
+  border: 1px solid rgba(255, 70, 85, 0.25);
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-top: 16px;
 }
 
 .appendix-header {
@@ -316,8 +319,8 @@
 
 .appendix-header h3 {
   margin: 0;
-  font-size: 13px; /* 从 15px 缩小 */
-  color: #d32f2f;
+  font-size: 13px;
+  color: #FF4655;
 }
 
 .appendix-icon {
@@ -325,8 +328,8 @@
 }
 
 .appendix-content {
-  font-size: 12px; /* 从 13px 缩小 */
-  color: #666;
+  font-size: 12px;
+  color: rgba(236, 232, 225, 0.6);
   line-height: 1.7;
 }
 
@@ -335,7 +338,7 @@
 }
 
 .warning-text {
-  color: #d32f2f;
+  color: #FF4655;
   font-weight: 500;
 }
 

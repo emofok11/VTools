@@ -6,7 +6,7 @@ interface ToolModule {
   id: string;
   name: string;
   description: string;
-  icon: string;
+  icon?: string;
   status: 'active' | 'coming-soon';
 }
 
@@ -14,19 +14,28 @@ interface ToolModule {
 const TOOL_MODULES: ToolModule[] = [
   {
     id: 'ui-delivery-template',
-    name: 'UI发包模版',
+    name: '发包模版',
     description: '击杀图标、列表表格等模版的创建、编辑与导出，支持历史记录管理',
-    icon: '🎯',
     status: 'active',
   },
-  // 预留：后续新增工具模块在此添加
-  // {
-  //   id: 'asset-manager',
-  //   name: '素材管理',
-  //   description: '游戏素材的统一管理与版本控制',
-  //   icon: '📦',
-  //   status: 'coming-soon',
-  // },
+  {
+    id: 'design-review',
+    name: '设计审核',
+    description: '设计稿审核流程管理，支持多轮评审与反馈跟踪',
+    status: 'coming-soon',
+  },
+  {
+    id: 'design-spec',
+    name: '设计规范',
+    description: '统一视觉设计规范与组件标准，确保设计一致性',
+    status: 'coming-soon',
+  },
+  {
+    id: 'design-generation',
+    name: '设计生成',
+    description: 'AI驱动的设计稿自动生成，快速产出高质量视觉方案',
+    status: 'coming-soon',
+  },
 ];
 
 interface DashboardProps {
@@ -64,7 +73,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onEnterModule }) => {
         <section className="dashboard-modules">
           <div className="modules-header">
             <h2 className="modules-title">工具模块</h2>
-            <span className="modules-count">{TOOL_MODULES.filter(m => m.status === 'active').length} 个可用</span>
           </div>
 
           <div className="modules-grid">
@@ -83,13 +91,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onEnterModule }) => {
                   <div className="module-info">
                     <h3 className="module-name">{module.name}</h3>
                     <p className="module-desc">{module.description}</p>
-                  </div>
-                  <div className="module-action">
-                    {module.status === 'active' ? (
-                      <span className="module-enter">进入 →</span>
-                    ) : (
-                      <span className="module-coming">即将上线</span>
-                    )}
                   </div>
                 </div>
               </div>

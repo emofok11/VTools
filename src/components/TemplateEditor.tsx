@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { TemplateDefinition, ImageData, ContainerPart } from '../types/template';
 import { generateDynamicSkill } from '../lib/templateSkills';
-import { isFieldVisible } from '../lib/templateUtils'; // 引入公共过滤函数
+import { isFieldVisible, getTodayVersion } from '../lib/templateUtils'; // 引入公共过滤函数
 import { templateRegistry } from '../lib/templateRegistry'; // 用于同步容器变更到注册中心
 import { createDescriptionPart, createListItemPart, createImageGroupPart, createTablePart } from '../lib/containerParts';
 import ImageUploader from './ImageUploader';
@@ -1377,7 +1377,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
             </button>
           )}
           <div className="template-badge">
-            <span className="badge-icon">📋</span>
+<span className="badge-icon">☰</span>
             {/* 模板名称：双击进入编辑 */}
             {editingHeaderField === 'name' ? (
               <input
@@ -1398,44 +1398,44 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                 title="双击编辑模板名称"
               >{localTemplateName}</span>
             )}
+            {/* 版本号：双击进入编辑 */}
+            {editingHeaderField === 'version' ? (
+              <input
+                type="text"
+                className="header-inline-input header-version-input"
+                value={localTemplateVersion}
+                onChange={(e) => setLocalTemplateVersion(e.target.value)}
+                placeholder="版本号"
+                autoFocus
+                onBlur={() => setEditingHeaderField(null)}
+                onKeyDown={(e) => { if (e.key === 'Enter') setEditingHeaderField(null); }}
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <div
+                className="version-tag version-tag-editable"
+                onDoubleClick={() => setEditingHeaderField('version')}
+                title="双击编辑版本号"
+              >{localTemplateVersion}</div>
+            )}
           </div>
-          {/* 版本号：双击进入编辑 */}
-          {editingHeaderField === 'version' ? (
-            <input
-              type="text"
-              className="header-inline-input header-version-input"
-              value={localTemplateVersion}
-              onChange={(e) => setLocalTemplateVersion(e.target.value)}
-              placeholder="版本号"
-              autoFocus
-              onBlur={() => setEditingHeaderField(null)}
-              onKeyDown={(e) => { if (e.key === 'Enter') setEditingHeaderField(null); }}
-              onMouseDown={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <div
-              className="version-tag version-tag-editable"
-              onDoubleClick={() => setEditingHeaderField('version')}
-              title="双击编辑版本号"
-            >{localTemplateVersion}</div>
-          )}
           {/* 显示当前选中的图片坑位提示 */}
           {selectedSlotId && (
             <div className="selected-slot-badge">
-              📋 已选中: {selectedSlotId}
+☰ 已选中: {selectedSlotId}
               <span className="paste-hint-inline">可粘贴图片</span>
             </div>
           )}
         </div>
         <div className="header-actions">
           <button className="btn-save" onClick={handleSave}>
-            💾 保存草稿
+保存草稿
           </button>
           <button className="btn-preview" onClick={() => setShowPreviewModal(true)}>
-            👁️ 预览文档
+预览文档
           </button>
           <button className="btn-export" onClick={handleExport}>
-            📤 生成发包文档
+↗ 生成发包文档
           </button>
         </div>
       </div>
@@ -1602,10 +1602,10 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
               </button>
               {showAddMenu && (
                 <div className="add-container-menu">
-                  <button onClick={handleAddDescriptionModule}>📝 描述模块</button>
-                  <button onClick={handleAddListItemModule}>📋 列表条目</button>
-                  <button onClick={handleAddImageGroupModule}>🖼️ 图片组</button>
-                  <button onClick={handleAddTableModule}>📊 表格</button>
+<button onClick={handleAddDescriptionModule}>✎ 描述模块</button>
+                  <button onClick={handleAddListItemModule}>☰ 列表条目</button>
+                  <button onClick={handleAddImageGroupModule}>▣ 图片组</button>
+                  <button onClick={handleAddTableModule}>⊞ 表格</button>
                 </div>
               )}
             </div>
@@ -1646,7 +1646,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                       : 'version-info';
                     handleTextChange(fieldId, e.target.value);
                   }}
-                  placeholder="V / 2025.10.09"
+                  placeholder={getTodayVersion()}
                 />
               </div>
             </div>
@@ -1732,7 +1732,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                       }}
                     />
                   )}
-                  <span className="module-icon">📋</span>
+
                   {/* 自定义容器：标题可编辑；非自定义容器：静态显示 */}
                   {canEditContainers && localContainers.some(c => c.id === module.id) ? (
                     <input
@@ -2050,7 +2050,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
             return (
               <div className="module-section">
                 <div className="module-header" style={{ borderLeftColor: '#999' }}>
-                  <span className="module-icon">💎</span>
+
                   <h3 className="module-title">其他信息</h3>
                 </div>
                 

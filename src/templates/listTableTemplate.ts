@@ -5,6 +5,7 @@
 
 import { TemplateDefinition } from '../types/template';
 import { templateRegistry } from '../lib/templateRegistry';
+import { getTodayVersion } from '../lib/templateUtils';
 
 export const listTableTemplate: TemplateDefinition = {
   id: 'template-list-table-001',
@@ -15,7 +16,7 @@ export const listTableTemplate: TemplateDefinition = {
   status: 'published',
   createdAt: '2025-01-01T00:00:00.000Z',
   updatedAt: '2025-10-09T00:00:00.000Z',
-  version: 'V / 2025.10.09',
+  version: getTodayVersion(),
 
   // 文字字段配置
   textFields: [
@@ -32,8 +33,8 @@ export const listTableTemplate: TemplateDefinition = {
     {
       id: 'overall-version-info',
       label: '版本信息',
-      placeholder: 'V / 2025.10.09',
-      defaultValue: 'V / 2025.10.09',
+      placeholder: getTodayVersion(),
+      defaultValue: getTodayVersion(),
       required: false,
       maxLength: 30,
       style: { fontSize: 14, fontWeight: '400', color: '#666666' }

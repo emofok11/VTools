@@ -6,7 +6,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 25, 35, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -20,16 +20,17 @@
 }
 
 .modal-content {
-  background: white;
-  border-radius: 16px;
+  background: #ECE8E1;
+  border-radius: 8px;
   width: 90%;
   max-width: 560px;
   max-height: 90vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 60px rgba(15, 25, 35, 0.4);
   animation: slideUp 0.3s ease;
+  border: 1px solid rgba(15, 25, 35, 0.1);
 }
 
 @keyframes slideUp {
@@ -48,13 +49,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(15, 25, 35, 0.1);
+  background: #0f1923;
 }
 
 .modal-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: #ECE8E1;
   margin: 0;
 }
 
@@ -62,10 +64,10 @@
   width: 32px;
   height: 32px;
   border: none;
-  background: #f5f5f5;
+  background: rgba(236, 232, 225, 0.1);
   border-radius: 50%;
   font-size: 20px;
-  color: #999;
+  color: rgba(236, 232, 225, 0.6);
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
@@ -74,8 +76,8 @@
 }
 
 .modal-close:hover {
-  background: #e8e8e8;
-  color: #666;
+  background: rgba(236, 232, 225, 0.2);
+  color: #ECE8E1;
 }
 
 /* 步骤指示器 */
@@ -84,7 +86,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: #fafafa;
+  background: rgba(15, 25, 35, 0.05);
 }
 
 .step {
@@ -103,7 +105,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #d9d9d9;
+  background: #a0a0a0;
   color: white;
   display: flex;
   align-items: center;
@@ -114,23 +116,23 @@
 }
 
 .step.active .step-number {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #FF4655;
 }
 
 .step-label {
   font-size: 14px;
-  color: #666;
+  color: rgba(15, 25, 35, 0.7);
 }
 
 .step.active .step-label {
-  color: #333;
+  color: #0f1923;
   font-weight: 500;
 }
 
 .step-line {
   width: 60px;
   height: 2px;
-  background: #e8e8e8;
+  background: #b0b0b0;
   margin: 0 16px;
 }
 
@@ -153,12 +155,12 @@
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: #0f1923;
   margin-bottom: 8px;
 }
 
 .form-label .required {
-  color: #ff4d4f;
+  color: #FF4655;
   margin-left: 4px;
 }
 
@@ -178,15 +180,15 @@
 .form-input:hover,
 .form-select:hover,
 .form-textarea:hover {
-  border-color: #40a9ff;
+  border-color: #FF4655;
 }
 
 .form-input:focus,
 .form-select:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: #1890ff;
-  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.1);
+  border-color: #FF4655;
+  box-shadow: 0 0 0 3px rgba(255, 70, 85, 0.1);
 }
 
 .form-textarea {
@@ -196,7 +198,7 @@
 
 .form-error {
   font-size: 12px;
-  color: #ff4d4f;
+  color: #FF4655;
   margin: 8px 0 0;
 }
 
@@ -235,8 +237,8 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-top: 1px solid rgba(15, 25, 35, 0.1);
+  background: rgba(15, 25, 35, 0.04);
 }
 
 .btn-primary,
@@ -251,13 +253,13 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #FF4655;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(255, 70, 85, 0.3);
 }
 
 .btn-primary:disabled {
@@ -267,13 +269,13 @@
 
 .btn-secondary {
   background: white;
-  color: #666;
-  border: 1px solid #d9d9d9;
+  color: #0f1923;
+  border: none;
 }
 
 .btn-secondary:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  background: #f0f0f0;
+  color: #FF4655;
 }
 
 /* Token 输入框包装器（含显示/隐藏切换按钮） */
@@ -319,7 +321,7 @@
 }
 
 .error-banner .error-icon {
-  font-size: 18px;
+  font-size: 22px;
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -350,13 +352,13 @@
 
 /* 输入框错误状态 */
 .form-input.input-error {
-  border-color: #ff4d4f;
-  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.1);
+  border-color: #FF4655;
+  box-shadow: 0 0 0 3px rgba(255, 70, 85, 0.1);
 }
 
 .form-input.input-error:focus {
-  border-color: #ff4d4f;
-  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.2);
+  border-color: #FF4655;
+  box-shadow: 0 0 0 3px rgba(255, 70, 85, 0.2);
 }
 
 /* 参考模板提示文字 */
@@ -393,7 +395,7 @@
 }
 
 .source-mode-btn.active {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #FF4655;
   color: white;
 }
 
@@ -418,15 +420,15 @@
 }
 
 .image-upload-zone:hover {
-  border-color: #667eea;
-  background: #f5f0ff;
+  border-color: #FF4655;
+  background: rgba(255, 70, 85, 0.05);
 }
 
 /* 拖拽悬停状态 */
 .image-upload-zone.dragging {
-  border-color: #667eea;
-  background: #ede9fe;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  border-color: #FF4655;
+  background: rgba(255, 70, 85, 0.08);
+  box-shadow: 0 0 0 3px rgba(255, 70, 85, 0.15);
 }
 
 /* 已上传图片状态 */
@@ -447,7 +449,7 @@
 }
 
 .upload-icon {
-  font-size: 36px;
+  font-size: 42px;
   opacity: 0.6;
 }
 
@@ -467,7 +469,7 @@
 /* 粘贴上传提示 */
 .upload-paste-hint {
   font-size: 12px;
-  color: #667eea;
+  color: #FF4655;
   margin: 4px 0 0 0;
   opacity: 0.85;
 }
@@ -591,7 +593,7 @@
 }
 
 .parse-icon {
-  font-size: 16px;
+  font-size: 20px;
 }
 
 .parse-text {
@@ -634,8 +636,8 @@
 }
 
 .module-item:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+  border-color: #FF4655;
+  box-shadow: 0 2px 8px rgba(255, 70, 85, 0.1);
 }
 
 .module-header {
@@ -649,8 +651,8 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  background: #f0f5ff;
-  color: #2f54eb;
+  background: rgba(255, 70, 85, 0.1);
+  color: #FF4655;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
@@ -721,9 +723,9 @@
 }
 
 .module-add-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
-  background: #e6f7ff;
+  border-color: #FF4655;
+  color: #FF4655;
+  background: rgba(255, 70, 85, 0.05);
 }
 
 /* 已添加模块列表 */
@@ -752,15 +754,15 @@
 }
 
 .custom-module-item:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+  border-color: #FF4655;
+  box-shadow: 0 2px 8px rgba(255, 70, 85, 0.1);
 }
 
 /* 拖拽中的模块项 */
 .custom-module-item.dragging {
   opacity: 0.5;
-  border-color: #1890ff;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  border-color: #FF4655;
+  box-shadow: 0 4px 12px rgba(255, 70, 85, 0.3);
 }
 
 /* 拖拽经过的目标模块项 */
@@ -780,7 +782,7 @@
 }
 
 .drag-handle:hover {
-  color: #1890ff;
+  color: #FF4655;
 }
 
 /* 模块项头部 */
@@ -854,9 +856,9 @@
 }
 
 .module-action-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
-  background: #e6f7ff;
+  border-color: #FF4655;
+  color: #FF4655;
+  background: rgba(255, 70, 85, 0.05);
 }
 
 /* 清空所有按钮 */
@@ -916,11 +918,11 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: #e6f7ff;
-  border: 1px solid #91d5ff;
+  background: rgba(255, 70, 85, 0.08);
+  border: 1px solid rgba(255, 70, 85, 0.3);
   border-radius: 4px;
   font-size: 12px;
-  color: #1890ff;
+  color: #FF4655;
 }
 
 .tag-remove-btn {
@@ -928,7 +930,7 @@
   height: 16px;
   border: none;
   background: transparent;
-  color: #1890ff;
+  color: #FF4655;
   cursor: pointer;
   border-radius: 50%;
   display: flex;
@@ -940,31 +942,31 @@
 }
 
 .tag-remove-btn:hover {
-  background: #1890ff;
+  background: #FF4655;
   color: white;
 }
 
 /* 自定义模板按钮 */
 .custom-template-btn {
   margin-left: auto;
-  background: #f6ffed !important;
-  border-color: #b7eb8f !important;
-  color: #52c41a !important;
+  background: white !important;
+  border: none !important;
+  color: #0f1923 !important;
 }
 
 .custom-template-btn:hover {
-  background: #d9f7be !important;
-  border-color: #95de64 !important;
-  color: #389e0d !important;
+  background: #f0f0f0 !important;
+  border: none !important;
+  color: #FF4655 !important;
 }
 
 /* 自定义模式头部 */
 .custom-mode-header {
   margin-bottom: 20px;
   padding: 16px;
-  background: linear-gradient(135deg, #f6ffed 0%, #e6f7ff 100%);
+  background: rgba(15, 25, 35, 0.06);
   border-radius: 8px;
-  border-left: 4px solid #52c41a;
+  border-left: 4px solid #FF4655;
 }
 
 .custom-mode-header h3 {

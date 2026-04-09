@@ -550,7 +550,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                   className={`source-mode-btn ${sourceMode === 'image' ? 'active' : ''}`}
                   onClick={() => { setSourceMode('image'); setSubmitError(''); }}
                 >
-                  🖼️ 上传图片解析
+                  ▣ 上传图片解析
                 </button>
               </div>
 
@@ -612,7 +612,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
               {/* 导入失败错误提示区域 */}
               {submitError && (
                 <div className="error-banner">
-                  <span className="error-icon">⚠️</span>
+                  <span className="error-icon">!</span>
                   <div className="error-content">
                     <p className="error-title">导入失败</p>
                     <p className="error-message">{submitError}</p>
@@ -667,10 +667,10 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                       </div>
                     ) : (
                       <div className="upload-placeholder">
-                        <span className="upload-icon">📤</span>
+                        <span className="upload-icon">↑</span>
                         <p className="upload-text">点击、拖拽或粘贴图片到此处上传</p>
                         <p className="upload-hint">支持 PNG、JPG、GIF、WebP，最大 20MB</p>
-                        <p className="upload-paste-hint">💡 可直接使用 Ctrl+V / ⌘+V 粘贴截图</p>
+                        <p className="upload-paste-hint">※ 可直接使用 Ctrl+V / ⌘+V 粘贴截图</p>
                       </div>
                     )}
                     {/* 隐藏的文件选择器 */}
@@ -689,7 +689,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                   {/* 解析状态提示 */}
                   {isAnalyzing && (
                     <div className="parse-status analyzing">
-                      <span className="parse-icon">🔍</span>
+                      <span className="parse-icon">⌕</span>
                       <span className="parse-text">正在智能分析图片结构...</span>
                     </div>
                   )}
@@ -705,7 +705,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                   
                   {parseError && (
                     <div className="parse-status error">
-                      <span className="parse-icon">⚠️</span>
+                      <span className="parse-icon">!</span>
                       <span className="parse-text">{parseError}</span>
                     </div>
                   )}
@@ -714,7 +714,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                 {/* 解析结果预览：显示识别出的模块结构 */}
                 {parseResult && !isAnalyzing && (
                   <div className="parse-result-preview">
-                    <h4 className="parse-result-title">📋 识别到的模板结构</h4>
+                    <h4 className="parse-result-title">☰ 识别到的模板结构</h4>
                     <div className="module-list">
                       {parseResult.modules.map((module, index) => (
                         <div key={module.id || index} className="module-item">
@@ -728,12 +728,12 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                           <div className="module-details">
                             {module.textFields.length > 0 && (
                               <span className="module-detail" title={`${module.textFields.length}个文字字段`}>
-                                📝 {module.textFields.length}
+                                ✎ {module.textFields.length}
                               </span>
                             )}
                             {module.imageSlots.length > 0 && (
                               <span className="module-detail" title={`${module.imageSlots.length}个图片坑位`}>
-                                🖼️ {module.imageSlots.length}
+                                ▣ {module.imageSlots.length}
                               </span>
                             )}
                           </div>
@@ -741,7 +741,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                       ))}
                     </div>
                     <p className="parse-hint">
-                      💡 结构预览仅为框架示意，可在下一步调整名称和分类
+                      ※ 结构预览仅为框架示意，可在下一步调整名称和分类
                     </p>
                   </div>
                 )}
@@ -932,28 +932,28 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                     onClick={handleAddDescriptionModule}
                     title="添加描述模块"
                   >
-                    📝 描述
+                    ✎ 描述
                   </button>
                   <button 
                     className="module-add-btn"
                     onClick={handleAddListItemModule}
                     title="添加列表条目（标题+描述+图片）"
                   >
-                    📋 列表条目
+                    ☰ 列表条目
                   </button>
                   <button 
                     className="module-add-btn"
                     onClick={handleAddImageGroupModule}
                     title="添加图片组（可动态添加多张图片）"
                   >
-                    🖼️ 图片组
+                    ▣ 图片组
                   </button>
                   <button 
                     className="module-add-btn"
                     onClick={handleAddTableModule}
                     title="添加表格（可动态添加行）"
                   >
-                    📊 表格
+                    ⊞ 表格
                   </button>
                 </div>
 
@@ -987,12 +987,12 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                         <div className="module-item-details">
                           {module.textFields.length > 0 && (
                             <span className="detail-badge" title={`${module.textFields.length}个文字字段`}>
-                              📝 {module.textFields.length}字段
+                              ✎ {module.textFields.length}字段
                             </span>
                           )}
                           {module.imageSlots.length > 0 && (
                             <span className="detail-badge" title={`${module.imageSlots.length}个图片坑位`}>
-                              🖼️ {module.imageSlots.length}图片
+                              ▣ {module.imageSlots.length}图片
                             </span>
                           )}
                           {module.isRepeatable && (
@@ -1096,12 +1096,12 @@ export default CreateTemplateModal;
 // 辅助函数：获取模块类型的显示标签
 function getModuleTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    'title': '📌 标题',
-    'description': '📝 描述',
-    'list': '📋 列表条目',
-    'image-group': '🖼️ 图片组',
-    'table': '📊 表格',
-    'divider': '➖ 分隔线'
+    'title': '• 标题',
+    'description': '✎ 描述',
+    'list': '☰ 列表条目',
+    'image-group': '▣ 图片组',
+    'table': '⊞ 表格',
+    'divider': '— 分隔线'
   };
   return labels[type] || type;
 }

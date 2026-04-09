@@ -40,3 +40,16 @@ export function isFieldVisible(fieldId: string): boolean {
 export function getExcludedFieldIds(): readonly string[] {
   return EXCLUDED_FIELD_IDS;
 }
+
+/**
+ * 获取当天日期的版本信息字符串
+ * 格式：V / YYYY.MM.DD（自动检测当天日期）
+ * @returns 版本信息字符串
+ */
+export function getTodayVersion(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `V / ${year}.${month}.${day}`;
+}
