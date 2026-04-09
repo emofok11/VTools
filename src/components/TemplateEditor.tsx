@@ -4,6 +4,13 @@ import { generateDynamicSkill } from '../lib/templateSkills';
 import { isFieldVisible, getTodayVersion } from '../lib/templateUtils'; // 引入公共过滤函数
 import { templateRegistry } from '../lib/templateRegistry'; // 用于同步容器变更到注册中心
 import { createDescriptionPart, createListItemPart, createImageGroupPart, createTablePart } from '../lib/containerParts';
+import {
+  ListStateManager,
+  KeyboardEventDispatcher,
+  createInputHandler,
+  initializeListEditorState,
+  createConfiguredDispatcher
+} from '../lib/listEditorUtils'; // 列表编辑工具
 import ImageUploader from './ImageUploader';
 import DocumentPreview from './DocumentPreview';
 import DeleteButton from './DeleteButton';
@@ -18,6 +25,700 @@ interface TemplateEditorProps {
   onBack?: () => void;
 }
 
+// 自定义描述模块统一使用项目符号文本格式，并支持同一条目内续行。
+const DESCRIPTION_BULLET = '· ';
+const DESCRIPTION_BULLET_REGEXP = /^\s*[·•●▪◦‣\-]\s*/;
+const DESCRIPTION_CONTINUATION = '  ';
+const DESCRIPTION_COLOR_META_SUFFIX = '__color';
+const DEFAULT_DESCRIPTION_TEXT_COLOR = '#ECE8E1';
+const DESCRIPTION_COLOR_OPTIONS = ['#ECE8E1', '#FF4655', '#F5D061', '#4ECDC4', '#7AA2FF', '#C792EA'] as const;
+const DESCRIPTION_HISTORY_LIMIT = 100;
+
+// 颜色元数据单独挂在 textValues 上，避免改动现有模版结构。
+function getDescriptionColorFieldId(fieldId: string): string {
+  return `${fieldId}${DESCRIPTION_COLOR_META_SUFFIX}`;
+}
+
+// 统一约束颜色格式，避免把非法值写入预览和存储。
+function normalizeDescriptionColor(value?: string): string {
+  if (!value) return DEFAULT_DESCRIPTION_TEXT_COLOR;
+  const normalizedValue = value.trim();
+
+  if (/^#[0-9a-fA-F]{6}$/.test(normalizedValue)) {
+    return normalizedValue.toUpperCase();
+  }
+
+  const rgbMatch = normalizedValue.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (rgbMatch) {
+    const toHex = (channel: string) => Math.max(0, Math.min(255, Number(channel)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+
+    return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
+  }
+
+  return DEFAULT_DESCRIPTION_TEXT_COLOR;
+}
+
+// 判断当前值是否已经是富文本 HTML，兼容旧版纯文本描述内容。
+function isDescriptionRichHtml(value?: string): boolean {
+  return Boolean(value && /<\/?[a-z][^>]*>/i.test(value));
+}
+
+// 转义描述内容里的危险字符，避免写回 DOM 时破坏结构。
+function escapeDescriptionHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// 将纯文本项目符号内容转换为富文本 HTML，供编辑器与预览复用。
+function descriptionPlainTextToHtml(value: string): string {
+  const normalizedText = value.replace(/\r\n/g, '\n');
+  if (!normalizedText.trim()) return '';
+
+  // 这里保持“纯文本 + 换行”的模型，避免列表渲染后的 HTML 与键盘编辑逻辑使用不同文本语义。
+  return escapeDescriptionHtml(normalizedText).replace(/\n/g, '<br>');
+}
+
+// 将富文本 HTML 还原为纯文本，便于复用现有项目符号解析逻辑。
+function descriptionHtmlToPlainText(value?: string): string {
+  if (!value) return '';
+  if (!isDescriptionRichHtml(value)) {
+    return value.replace(/\r\n/g, '\n');
+  }
+
+  const container = document.createElement('div');
+  container.innerHTML = value;
+  const parts: string[] = [];
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent || '');
+      return;
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+
+    const tagName = node.tagName.toLowerCase();
+    if (tagName === 'br') {
+      parts.push('\n');
+      return;
+    }
+
+    node.childNodes.forEach(walk);
+
+    if ((tagName === 'div' || tagName === 'p') && parts[parts.length - 1] !== '\n') {
+      parts.push('\n');
+    }
+  };
+
+  container.childNodes.forEach(walk);
+  // 保留末尾换行，避免自定义描述输入框在 Enter / Shift+Enter 后被规范化逻辑吞掉空行。
+  return parts.join('').replace(/\u00A0/g, ' ');
+}
+
+// 清洗富文本内容，只保留文本、换行和带颜色的 span，避免 contentEditable 回写脏结构。
+function sanitizeDescriptionRichHtml(value?: string, fallbackColor?: string): string {
+  if (!value) return '';
+  if (!isDescriptionRichHtml(value)) {
+    return descriptionPlainTextToHtml(descriptionHtmlToPlainText(value));
+  }
+
+  const container = document.createElement('div');
+  container.innerHTML = value;
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+
+  const serializeNode = (node: Node, inheritedColor?: string): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return escapeDescriptionHtml(node.textContent || '');
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return '';
+    }
+
+    const tagName = node.tagName.toLowerCase();
+    if (tagName === 'br') {
+      return '<br>';
+    }
+
+    const rawColor = node.style.color || node.getAttribute('color') || '';
+    const normalizedColor = rawColor ? normalizeDescriptionColor(rawColor) : inheritedColor;
+    const childHtml = Array.from(node.childNodes)
+      .map(child => serializeNode(child, normalizedColor))
+      .join('');
+
+    if (!childHtml) {
+      return '';
+    }
+
+    const normalizedInheritedColor = normalizeDescriptionColor(inheritedColor);
+    const wrappedHtml = normalizedColor
+      && normalizedColor !== normalizedInheritedColor
+      && normalizedColor !== normalizedFallbackColor
+      ? `<span style="color: ${normalizedColor};">${childHtml}</span>`
+      : childHtml;
+
+    if (tagName === 'div' || tagName === 'p' || tagName === 'li') {
+      return `${wrappedHtml}<br>`;
+    }
+
+    return wrappedHtml;
+  };
+
+  // 保留末尾 <br>，这样自定义描述输入框才能显示真正的末尾空行。
+  return Array.from(container.childNodes)
+    .map(node => serializeNode(node, normalizedFallbackColor))
+    .join('');
+}
+
+// 用字符级 token 保留描述内容中的局部颜色，避免插入换行或调整颜色时丢失样式。
+interface DescriptionCharToken {
+  char: string;
+  color?: string;
+}
+
+// 用纯文本偏移量记录选区，便于在 DOM 与文本模型之间来回同步光标位置。
+interface DescriptionSelectionRange {
+  start: number;
+  end: number;
+}
+
+// 为自定义描述输入框维护最小历史快照，专门用于 Ctrl/Cmd+Z 撤销。
+interface DescriptionHistorySnapshot {
+  value: string;
+  selection: DescriptionSelectionRange;
+  fallbackColor: string;
+}
+
+// 将富文本内容拍平成字符 token，便于基于纯文本偏移做插入、删除和着色。
+function descriptionHtmlToCharTokens(value?: string, fallbackColor?: string): DescriptionCharToken[] {
+  if (!value) return [];
+
+  const container = document.createElement('div');
+  // 统一使用innerHTML赋值，让浏览器自动解码HTML实体
+  // 注意：这里不再区分是否是富HTML，因为我们总是需要正确解码HTML实体
+  container.innerHTML = value;
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  const tokens: DescriptionCharToken[] = [];
+
+  const pushText = (text: string, color?: string) => {
+    const normalizedColor = color && normalizeDescriptionColor(color) !== normalizedFallbackColor
+      ? normalizeDescriptionColor(color)
+      : undefined;
+
+    Array.from(text.replace(/\u00A0/g, ' ')).forEach(char => {
+      tokens.push({ char, color: normalizedColor });
+    });
+  };
+
+  const walk = (node: Node, inheritedColor?: string) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(node.textContent || '', inheritedColor);
+      return;
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+
+    const tagName = node.tagName.toLowerCase();
+    if (tagName === 'br') {
+      tokens.push({ char: '\n' });
+      return;
+    }
+
+    const rawColor = node.style.color || node.getAttribute('color') || inheritedColor;
+    const normalizedColor = rawColor ? normalizeDescriptionColor(rawColor) : undefined;
+
+    node.childNodes.forEach(child => walk(child, normalizedColor));
+
+    if ((tagName === 'div' || tagName === 'p' || tagName === 'li') && tokens[tokens.length - 1]?.char !== '\n') {
+      tokens.push({ char: '\n' });
+    }
+  };
+
+  container.childNodes.forEach(node => walk(node));
+
+  // 保留末尾换行 token，避免自定义描述输入框在行尾按 Enter / Shift+Enter 后被重新序列化时丢失空行。
+  return tokens;
+}
+
+// 将字符 token 重新序列化成编辑器可用 HTML，只在必要时输出带颜色的 span。
+function descriptionCharTokensToHtml(tokens: DescriptionCharToken[], fallbackColor?: string): string {
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  let html = '';
+  let activeColor: string | undefined;
+
+  const closeColorSpan = () => {
+    if (activeColor) {
+      html += '</span>';
+      activeColor = undefined;
+    }
+  };
+
+  tokens.forEach(token => {
+    if (token.char === '\n') {
+      closeColorSpan();
+      html += '<br>';
+      return;
+    }
+
+    const normalizedColor = token.color && normalizeDescriptionColor(token.color) !== normalizedFallbackColor
+      ? normalizeDescriptionColor(token.color)
+      : undefined;
+
+    if (normalizedColor !== activeColor) {
+      closeColorSpan();
+      if (normalizedColor) {
+        html += `<span style="color: ${normalizedColor};">`;
+        activeColor = normalizedColor;
+      }
+    }
+
+    html += escapeDescriptionHtml(token.char);
+  });
+
+  closeColorSpan();
+  // 保留末尾 <br>，确保自定义描述输入框的行尾换行能被真实渲染出来。
+  return html;
+}
+
+// 按纯文本偏移插入或替换描述内容，同时保留未修改字符原有的局部颜色。
+function insertDescriptionTextIntoHtml(value: string, start: number, end: number, insertion: string, fallbackColor?: string): string {
+  const tokens = descriptionHtmlToCharTokens(value, fallbackColor);
+  const replacementTokens = Array.from(insertion).map(char => ({ char }));
+  const safeStart = Math.max(0, Math.min(start, tokens.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, tokens.length));
+
+  tokens.splice(safeStart, safeEnd - safeStart, ...replacementTokens);
+  return descriptionCharTokensToHtml(tokens, fallbackColor);
+}
+
+// 仅对选中文字打颜色，不改未选中的文本，满足“必须选中文字才能改字色”的需求。
+function applyDescriptionColorToHtml(value: string, start: number, end: number, color: string, fallbackColor?: string): string {
+  const tokens = descriptionHtmlToCharTokens(value, fallbackColor);
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  const normalizedColor = normalizeDescriptionColor(color);
+  const safeStart = Math.max(0, Math.min(start, tokens.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, tokens.length));
+
+  for (let index = safeStart; index < safeEnd; index += 1) {
+    if (tokens[index].char === '\n') continue;
+    tokens[index].color = normalizedColor === normalizedFallbackColor ? undefined : normalizedColor;
+  }
+
+  return descriptionCharTokensToHtml(tokens, fallbackColor);
+}
+
+// 读取当前选区颜色，便于在标题末端的颜色按钮上显示当前选中色。
+function getDescriptionSelectionColor(value: string, start: number, end: number, fallbackColor?: string): string | null {
+  const tokens = descriptionHtmlToCharTokens(value, fallbackColor);
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  const safeStart = Math.max(0, Math.min(start, tokens.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, tokens.length));
+  const coloredTokens = tokens
+    .slice(safeStart, safeEnd)
+    .filter(token => token.char !== '\n');
+
+  if (coloredTokens.length === 0) return null;
+
+  const firstColor = coloredTokens[0].color || normalizedFallbackColor;
+  return coloredTokens.every(token => (token.color || normalizedFallbackColor) === firstColor)
+    ? firstColor
+    : null;
+}
+
+// 计算任意节点在描述编辑器里的纯文本长度，<br> 按单个换行字符处理。
+function getDescriptionNodeTextLength(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return (node.textContent || '').replace(/\u00A0/g, ' ').length;
+  }
+
+  if (node instanceof HTMLElement && node.tagName.toLowerCase() === 'br') {
+    return 1;
+  }
+
+  let length = 0;
+  node.childNodes.forEach(child => {
+    length += getDescriptionNodeTextLength(child);
+  });
+  return length;
+}
+
+// 将 DOM 选区位置换算为纯文本偏移，便于复用既有的项目符号处理逻辑。
+function getDescriptionTextOffset(root: Node, targetNode: Node, targetOffset: number): number {
+  let offset = 0;
+
+  const walk = (node: Node): boolean => {
+    if (node === targetNode) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        offset += (node.textContent || '').replace(/\u00A0/g, ' ').slice(0, targetOffset).length;
+        return true;
+      }
+
+      if (node instanceof HTMLElement && node.tagName.toLowerCase() === 'br') {
+        offset += Math.min(targetOffset, 1);
+        return true;
+      }
+
+      for (let index = 0; index < targetOffset; index += 1) {
+        offset += getDescriptionNodeTextLength(node.childNodes[index]);
+      }
+      return true;
+    }
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      offset += (node.textContent || '').replace(/\u00A0/g, ' ').length;
+      return false;
+    }
+
+    if (node instanceof HTMLElement && node.tagName.toLowerCase() === 'br') {
+      offset += 1;
+      return false;
+    }
+
+    return Array.from(node.childNodes).some(child => walk(child));
+  };
+
+  walk(root);
+  return offset;
+}
+
+// 根据纯文本偏移反查 DOM 位置，用于在内容重写后把光标放回正确位置。
+function resolveDescriptionDomPosition(root: HTMLElement, offset: number): { node: Node; offset: number } {
+  const safeOffset = Math.max(0, offset);
+  let remaining = safeOffset;
+
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+    {
+      acceptNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+        if (node instanceof HTMLElement && node.tagName.toLowerCase() === 'br') return NodeFilter.FILTER_ACCEPT;
+        return NodeFilter.FILTER_SKIP;
+      }
+    }
+  );
+
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    const currentLength = currentNode.nodeType === Node.TEXT_NODE
+      ? (currentNode.textContent || '').replace(/\u00A0/g, ' ').length
+      : 1;
+
+    if (remaining <= currentLength) {
+      if (currentNode.nodeType === Node.TEXT_NODE) {
+        return { node: currentNode, offset: remaining };
+      }
+
+      const parentNode = currentNode.parentNode;
+      if (!parentNode) break;
+      // 这里显式收窄为 ChildNode，避免 TreeWalker 返回的 Node 类型触发索引类型报错。
+      const nodeIndex = Array.from(parentNode.childNodes).indexOf(currentNode as ChildNode);
+      return {
+        node: parentNode,
+        offset: remaining === 0 ? nodeIndex : nodeIndex + 1
+      };
+    }
+
+    remaining -= currentLength;
+    currentNode = walker.nextNode();
+  }
+
+  return {
+    node: root,
+    offset: root.childNodes.length
+  };
+}
+
+// 获取当前描述编辑器里的纯文本选区，供换行、粘贴和颜色按钮复用。
+function getDescriptionSelectionOffsets(editor: HTMLElement): DescriptionSelectionRange | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
+    return null;
+  }
+
+  return {
+    start: getDescriptionTextOffset(editor, range.startContainer, range.startOffset),
+    end: getDescriptionTextOffset(editor, range.endContainer, range.endOffset)
+  };
+}
+
+// 按纯文本偏移恢复选区，避免富文本内容更新后光标跳走。
+function setDescriptionSelectionOffsets(editor: HTMLElement, start: number, end: number): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const range = document.createRange();
+  const startPosition = resolveDescriptionDomPosition(editor, start);
+  const endPosition = resolveDescriptionDomPosition(editor, end);
+
+  range.setStart(startPosition.node, startPosition.offset);
+  range.setEnd(endPosition.node, endPosition.offset);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+// 计算当前光标所在行的起止位置，供键盘编辑逻辑复用。
+function getLineStart(value: string, position: number): number {
+  return value.lastIndexOf('\n', Math.max(0, position - 1)) + 1;
+}
+
+function getLineEnd(value: string, position: number): number {
+  const nextBreakIndex = value.indexOf('\n', position);
+  return nextBreakIndex === -1 ? value.length : nextBreakIndex;
+}
+
+// 替换指定区间的文本，避免重复手写 slice 逻辑。
+function replaceTextInRange(value: string, start: number, end: number, replacement: string): string {
+  return `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+}
+
+// 判断一行是否为项目符号行，以及是否已经删除到只剩项目符号。
+function isDescriptionBulletLine(lineText: string): boolean {
+  return DESCRIPTION_BULLET_REGEXP.test(lineText);
+}
+
+function isDescriptionEmptyBulletLine(lineText: string): boolean {
+  return isDescriptionBulletLine(lineText) && !lineText.replace(DESCRIPTION_BULLET_REGEXP, '').trim();
+}
+
+// 找到当前条目的完整文本范围，便于二次 Backspace 直接删除整条目。
+function findDescriptionItemRange(value: string, cursor: number): { start: number; end: number } {
+  let itemStart = getLineStart(value, cursor);
+  let itemLineEnd = getLineEnd(value, itemStart);
+
+  while (itemStart > 0 && !isDescriptionBulletLine(value.slice(itemStart, itemLineEnd))) {
+    itemStart = getLineStart(value, itemStart - 1);
+    itemLineEnd = getLineEnd(value, itemStart);
+  }
+
+  let nextLineStart = itemLineEnd < value.length ? itemLineEnd + 1 : -1;
+  while (nextLineStart !== -1 && nextLineStart < value.length) {
+    const nextLineEnd = getLineEnd(value, nextLineStart);
+    const nextLineText = value.slice(nextLineStart, nextLineEnd);
+    if (isDescriptionBulletLine(nextLineText)) {
+      return { start: itemStart, end: nextLineStart };
+    }
+    nextLineStart = nextLineEnd < value.length ? nextLineEnd + 1 : -1;
+  }
+
+  if (itemStart > 0) {
+    return { start: itemStart - 1, end: value.length };
+  }
+
+  return { start: 0, end: value.length };
+}
+
+// 将描述输入内容拆分为结构化要点，兼容 Shift+Enter 产生的续行。
+function extractDescriptionPoints(value?: string): string[] {
+  if (!value) return [];
+
+  const plainTextValue = descriptionHtmlToPlainText(value);
+  if (!plainTextValue) return [];
+
+  const points: string[] = [];
+  let currentPointLines: string[] = [];
+
+  const commitCurrentPoint = () => {
+    if (currentPointLines.length === 0) return;
+
+    const normalizedLines = [...currentPointLines];
+    while (normalizedLines.length > 0 && !normalizedLines[0].trim()) normalizedLines.shift();
+    while (normalizedLines.length > 0 && !normalizedLines[normalizedLines.length - 1].trim()) normalizedLines.pop();
+
+    if (normalizedLines.some(line => line.trim())) {
+      points.push(normalizedLines.join('\n'));
+    }
+
+    currentPointLines = [];
+  };
+
+  plainTextValue
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .forEach(line => {
+      if (isDescriptionBulletLine(line)) {
+        commitCurrentPoint();
+        currentPointLines = [line.replace(DESCRIPTION_BULLET_REGEXP, '').trim()];
+        return;
+      }
+
+      if (line.trim()) {
+        if (currentPointLines.length === 0) {
+          currentPointLines = [line.trim()];
+        } else {
+          currentPointLines.push(line.trim());
+        }
+        return;
+      }
+
+      if (currentPointLines.length > 0) {
+        currentPointLines.push('');
+      }
+    });
+
+  commitCurrentPoint();
+  return points;
+}
+
+// 将单个要点重新格式化为“首行项目符号 + 续行缩进”的编辑器文本。
+function formatDescriptionPoint(point: string): string {
+  return point
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line, index) => {
+      const normalizedLine = line.trim();
+      if (index === 0) {
+        return `${DESCRIPTION_BULLET}${normalizedLine}`;
+      }
+      return normalizedLine ? `${DESCRIPTION_CONTINUATION}${normalizedLine}` : DESCRIPTION_CONTINUATION;
+    })
+    .join('\n');
+}
+
+// 将要点重新格式化为编辑器里的项目符号文本。
+function formatDescriptionPoints(points: string[]): string {
+  if (points.length === 0) return '';
+  return points.map(formatDescriptionPoint).join('\n');
+}
+
+// 多行纯文本粘贴时，自动批量转成项目符号列表。
+function buildDescriptionPasteValue(rawText: string): string {
+  const normalizedText = rawText.replace(/\r\n/g, '\n');
+  const sourceLines = normalizedText.split('\n');
+  const hasBulletPrefix = sourceLines.some(line => isDescriptionBulletLine(line));
+
+  const points = hasBulletPrefix
+    ? extractDescriptionPoints(normalizedText)
+    : sourceLines.map(line => line.trim()).filter(Boolean);
+
+  return formatDescriptionPoints(points);
+}
+
+// 初始化文字值时，兼容旧版自定义描述模块的 extra-desc-* 条目并合并回单输入框。
+function createInitialTextValues(
+  template: TemplateDefinition,
+  initialTextValues: Record<string, string>
+): Record<string, string> {
+  const values: Record<string, string> = {};
+
+  template.textFields.forEach(field => {
+    values[field.id] = initialTextValues[field.id] ?? field.defaultValue;
+  });
+
+  Object.keys(initialTextValues).forEach(key => {
+    if (key.startsWith('extra-impression-')) {
+      values[key] = initialTextValues[key];
+      return;
+    }
+
+    if (key.startsWith('extra-desc-') && !key.startsWith('extra-desc-custom-desc-')) {
+      values[key] = initialTextValues[key];
+    }
+  });
+
+  (template.containers || [])
+    .filter(container => container.type === 'description' && container.id.startsWith('custom-desc-'))
+    .forEach(container => {
+      const fieldId = container.textFields[0]?.id;
+      if (!fieldId) return;
+
+      const legacyExtraPoints = Object.keys(initialTextValues)
+        .filter(key => key.startsWith(`extra-desc-${container.id}-`))
+        .sort((a, b) => {
+          const indexA = parseInt(a.split('-').pop() || '0', 10);
+          const indexB = parseInt(b.split('-').pop() || '0', 10);
+          return indexA - indexB;
+        })
+        .flatMap(key => extractDescriptionPoints(initialTextValues[key]));
+
+      const hasRichPrimaryValue = isDescriptionRichHtml(values[fieldId]);
+      if (hasRichPrimaryValue && legacyExtraPoints.length === 0) {
+        values[fieldId] = sanitizeDescriptionRichHtml(values[fieldId], initialTextValues[getDescriptionColorFieldId(fieldId)]);
+      } else {
+        const mergedPoints = [
+          ...extractDescriptionPoints(values[fieldId]),
+          ...legacyExtraPoints
+        ];
+        values[fieldId] = descriptionPlainTextToHtml(formatDescriptionPoints(mergedPoints));
+      }
+
+      const colorFieldId = getDescriptionColorFieldId(fieldId);
+      if (initialTextValues[colorFieldId]) {
+        values[colorFieldId] = normalizeDescriptionColor(initialTextValues[colorFieldId]);
+      }
+    });
+
+  return values;
+}
+
+// 仅保留整体印象与旧版描述模块的动态条目状态，自定义描述模块改为单一输入框。
+function createExtraDescItemsState(initialTextValues: Record<string, string>): Record<string, number[]> {
+  const restored: Record<string, number[]> = {};
+
+  Object.keys(initialTextValues).forEach(key => {
+    const impressionMatch = key.match(/^extra-impression-(\d+)$/);
+    if (impressionMatch && initialTextValues[key] !== undefined) {
+      if (!restored['overall']) restored['overall'] = [];
+      restored['overall'].push(parseInt(impressionMatch[1], 10));
+    }
+
+    const descMatch = key.match(/^extra-desc-(.+)-(\d+)$/);
+    if (descMatch && initialTextValues[key] !== undefined) {
+      const moduleId = descMatch[1];
+      if (moduleId.startsWith('custom-desc-')) return;
+      if (!restored[moduleId]) restored[moduleId] = [];
+      restored[moduleId].push(parseInt(descMatch[2], 10));
+    }
+  });
+
+  return restored;
+}
+
+// 保存前清理自定义描述模块里的空项目符号，并规范颜色元数据。
+function sanitizeCustomDescriptionTextValues(
+  containers: ContainerPart[] | undefined,
+  textValues: Record<string, string>
+): Record<string, string> {
+  if (!containers || containers.length === 0) return textValues;
+
+  const sanitizedValues = { ...textValues };
+
+  containers
+    .filter(container => container.type === 'description' && container.id.startsWith('custom-desc-'))
+    .forEach(container => {
+      container.textFields.forEach(field => {
+        sanitizedValues[field.id] = sanitizeDescriptionRichHtml(
+          sanitizedValues[field.id] || descriptionPlainTextToHtml(formatDescriptionPoints(extractDescriptionPoints(sanitizedValues[field.id]))),
+          sanitizedValues[getDescriptionColorFieldId(field.id)]
+        );
+
+        const colorFieldId = getDescriptionColorFieldId(field.id);
+        const normalizedColor = normalizeDescriptionColor(sanitizedValues[colorFieldId]);
+        if (normalizedColor === DEFAULT_DESCRIPTION_TEXT_COLOR) {
+          delete sanitizedValues[colorFieldId];
+        } else {
+          sanitizedValues[colorFieldId] = normalizedColor;
+        }
+      });
+    });
+
+  return sanitizedValues;
+}
+
 export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   template,
   initialTextValues = {},
@@ -28,16 +729,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
 }) => {
   // 文字值状态
   const [textValues, setTextValues] = useState<Record<string, string>>(() => {
-    const values: Record<string, string> = {};
-    template.textFields.forEach(field => {
-      values[field.id] = initialTextValues[field.id] ?? field.defaultValue;
-    });
-    // 恢复动态添加的条目（extra-impression-* 和 extra-desc-*）
-    Object.keys(initialTextValues).forEach(key => {
-      if (key.startsWith('extra-impression-') || key.startsWith('extra-desc-')) {
-        values[key] = initialTextValues[key];
-      }
-    });
+    const values = createInitialTextValues(template, initialTextValues);
     // 恢复自定义 list 容器的动态条目字段（如 custom-list-xxx-title-2、custom-list-xxx-desc-2）
     const listContainerIds = (template.containers || []).filter(c => c.type === 'list').map(c => c.id);
     Object.keys(initialTextValues).forEach(key => {
@@ -79,16 +771,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
     if (!hasInitialValues) return;
     
     setTextValues(_prev => {
-      const values: Record<string, string> = {};
-      template.textFields.forEach(field => {
-        values[field.id] = initialTextValues[field.id] ?? field.defaultValue;
-      });
-      // 恢复动态添加的条目
-      Object.keys(initialTextValues).forEach(key => {
-        if (key.startsWith('extra-impression-') || key.startsWith('extra-desc-')) {
-          values[key] = initialTextValues[key];
-        }
-      });
+      const values = createInitialTextValues(template, initialTextValues);
       // 恢复自定义 list 容器的动态条目字段
       const listContainerIds = (template.containers || []).filter(c => c.type === 'list').map(c => c.id);
       Object.keys(initialTextValues).forEach(key => {
@@ -104,23 +787,9 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
       return values;
     });
 
-    // 同步恢复 extraDescItems 状态（只要 key 存在就恢复，不要求内容非空）
-    const restored: Record<string, number[]> = {};
-    Object.keys(initialTextValues).forEach(key => {
-      const impressionMatch = key.match(/^extra-impression-(\d+)$/);
-      if (impressionMatch && initialTextValues[key] !== undefined) {
-        if (!restored['overall']) restored['overall'] = [];
-        restored['overall'].push(parseInt(impressionMatch[1], 10));
-      }
-      const descMatch = key.match(/^extra-desc-(.+)-(\d+)$/);
-      if (descMatch && initialTextValues[key] !== undefined) {
-        const moduleId = descMatch[1];
-        if (!restored[moduleId]) restored[moduleId] = [];
-        restored[moduleId].push(parseInt(descMatch[2], 10));
-      }
-    });
-    setExtraDescItems(restored);
-  }, [initialTextValues, template.textFields]);
+    // 同步恢复 extraDescItems 状态（只保留整体印象与旧版描述条目）
+    setExtraDescItems(createExtraDescItemsState(initialTextValues));
+  }, [initialTextValues, template]);
 
   useEffect(() => {
     // 检查是否有实际内容
@@ -151,6 +820,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
 const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜单
   const [editingNavId, setEditingNavId] = useState<string | null>(null); // 当前正在编辑标题的导航页签ID
+  const [editingModuleTitleId, setEditingModuleTitleId] = useState<string | null>(null); // 当前正在编辑的右侧条目标题ID（复用 header 的双击编辑模式）
   const [editingHeaderField, setEditingHeaderField] = useState<'name' | 'version' | null>(null); // 当前正在编辑的头部字段（模板名称/版本号）
   const [localTemplateName, setLocalTemplateName] = useState(template.name); // 本地模板名称
   const [localTemplateVersion, setLocalTemplateVersion] = useState(template.version); // 本地模板版本号
@@ -175,6 +845,543 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
   }); // 字段小标题覆盖映射（含图片坑位自定义标题）
   const navClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 单击/双击检测定时器
   const addContainerRef = useRef<HTMLDivElement>(null); // 添加容器区域ref
+  const descriptionEditorRefs = useRef<Record<string, HTMLDivElement | null>>({}); // 自定义描述富文本输入区引用
+  const descriptionSelectionRangesRef = useRef<Record<string, DescriptionSelectionRange>>({}); // 自定义描述最近一次选区
+  const descriptionSelectionFrameRef = useRef<Record<string, number | null>>({}); // 自定义描述选区恢复帧，避免旧帧把光标跳回去
+  const descriptionHistoryRef = useRef<Record<string, DescriptionHistorySnapshot[]>>({}); // 自定义描述撤销历史，仅作用于该富文本输入框
+  const descriptionHistoryIndexRef = useRef<Record<string, number>>({}); // 自定义描述当前历史游标
+  const descriptionPendingSnapshotRef = useRef<Record<string, DescriptionHistorySnapshot | null>>({}); // 原生输入前暂存快照，供 Ctrl/Cmd+Z 撤销使用
+  const isApplyingDescriptionHistoryRef = useRef(false); // 正在应用撤销/重做时，避免重复记录历史
+  const listStateManagersRef = useRef<Record<string, ListStateManager>>({}); // 列表状态管理器
+  const listDispatchersRef = useRef<Record<string, KeyboardEventDispatcher>>({}); // 列表键盘事件分发器
+  const listInputHandlersRef = useRef<Record<string, ReturnType<typeof createInputHandler>>>({}); // 列表输入处理器
+  const isComposingRef = useRef(false); // IME组合状态（中文输入法等）
+
+  // 获取或创建指定字段的列表状态管理器
+  const getListStateManager = useCallback((fieldId: string): ListStateManager => {
+    if (!listStateManagersRef.current[fieldId]) {
+      listStateManagersRef.current[fieldId] = initializeListEditorState();
+    }
+    return listStateManagersRef.current[fieldId];
+  }, []);
+
+  // 获取或创建指定字段的键盘事件分发器
+  const getListDispatcher = useCallback((fieldId: string): KeyboardEventDispatcher => {
+    if (!listDispatchersRef.current[fieldId]) {
+      const stateManager = getListStateManager(fieldId);
+      listDispatchersRef.current[fieldId] = createConfiguredDispatcher(stateManager);
+    }
+    return listDispatchersRef.current[fieldId];
+  }, [getListStateManager]);
+
+  const getListInputHandler = useCallback((fieldId: string): ReturnType<typeof createInputHandler> => {
+    if (!listInputHandlersRef.current[fieldId]) {
+      listInputHandlersRef.current[fieldId] = createInputHandler();
+    }
+    return listInputHandlersRef.current[fieldId];
+  }, []);
+  const [activeDescriptionSelection, setActiveDescriptionSelection] = useState<{
+    fieldId: string | null;
+    start: number;
+    end: number;
+    color: string | null;
+  }>({
+    fieldId: null,
+    start: 0,
+    end: 0,
+    color: null
+  });
+
+  const focusDescriptionField = useCallback((fieldId: string, start: number, end = start) => {
+    const pendingFrame = descriptionSelectionFrameRef.current[fieldId];
+    if (pendingFrame !== null && pendingFrame !== undefined) {
+      cancelAnimationFrame(pendingFrame);
+    }
+
+    descriptionSelectionFrameRef.current[fieldId] = requestAnimationFrame(() => {
+      descriptionSelectionFrameRef.current[fieldId] = null;
+      const target = descriptionEditorRefs.current[fieldId];
+      if (!target) return;
+      if (document.activeElement !== target) {
+        target.focus();
+      }
+      setDescriptionSelectionOffsets(target, start, end);
+    });
+  }, []);
+
+  const captureDescriptionSnapshot = useCallback((
+    fieldId: string,
+    valueOverride?: string,
+    selectionOverride?: DescriptionSelectionRange,
+    fallbackColorOverride?: string
+  ): DescriptionHistorySnapshot => {
+    const editor = descriptionEditorRefs.current[fieldId];
+    const fallbackColor = normalizeDescriptionColor(
+      fallbackColorOverride || textValues[getDescriptionColorFieldId(fieldId)]
+    );
+    const rawValue = valueOverride ?? editor?.innerHTML ?? textValues[fieldId] ?? '';
+    const sanitizedValue = sanitizeDescriptionRichHtml(rawValue, fallbackColor);
+    const plainTextValue = descriptionHtmlToPlainText(sanitizedValue);
+    const selection = selectionOverride
+      || (editor ? getDescriptionSelectionOffsets(editor) : null)
+      || descriptionSelectionRangesRef.current[fieldId]
+      || { start: plainTextValue.length, end: plainTextValue.length };
+
+    return {
+      value: sanitizedValue,
+      selection,
+      fallbackColor
+    };
+  }, [textValues]);
+
+  const recordDescriptionHistory = useCallback((fieldId: string, snapshot: DescriptionHistorySnapshot) => {
+    const history = descriptionHistoryRef.current[fieldId] || [];
+    const currentIndex = descriptionHistoryIndexRef.current[fieldId] ?? (history.length - 1);
+    const activeSnapshot = currentIndex >= 0 ? history[currentIndex] : null;
+
+    if (
+      activeSnapshot
+      && activeSnapshot.value === snapshot.value
+      && activeSnapshot.selection.start === snapshot.selection.start
+      && activeSnapshot.selection.end === snapshot.selection.end
+      && activeSnapshot.fallbackColor === snapshot.fallbackColor
+    ) {
+      return;
+    }
+
+    const nextHistory = history.slice(0, currentIndex + 1);
+    nextHistory.push(snapshot);
+
+    if (nextHistory.length > DESCRIPTION_HISTORY_LIMIT) {
+      nextHistory.shift();
+    }
+
+    descriptionHistoryRef.current[fieldId] = nextHistory;
+    descriptionHistoryIndexRef.current[fieldId] = nextHistory.length - 1;
+  }, []);
+
+  const handleDescriptionTextChange = useCallback((
+    fieldId: string,
+    value: string,
+    selection?: DescriptionSelectionRange,
+    fallbackColorOverride?: string,
+    historyBaseSnapshot?: DescriptionHistorySnapshot | null
+  ) => {
+    const fallbackColor = normalizeDescriptionColor(
+      fallbackColorOverride || textValues[getDescriptionColorFieldId(fieldId)]
+    );
+    const sanitizedValue = sanitizeDescriptionRichHtml(value, fallbackColor);
+    const plainTextValue = descriptionHtmlToPlainText(sanitizedValue).replace(/\r\n/g, '\n');
+    const resolvedSelection = selection || { start: plainTextValue.length, end: plainTextValue.length };
+
+    if (!isApplyingDescriptionHistoryRef.current && historyBaseSnapshot) {
+      recordDescriptionHistory(fieldId, historyBaseSnapshot);
+      recordDescriptionHistory(fieldId, {
+        value: sanitizedValue,
+        selection: resolvedSelection,
+        fallbackColor
+      });
+    }
+
+    if (!plainTextValue.trim()) {
+      setTextValues(prev => ({
+        ...prev,
+        [fieldId]: ''
+      }));
+
+      if (selection) {
+        const emptySelection = { start: 0, end: 0 };
+        descriptionSelectionRangesRef.current[fieldId] = emptySelection;
+        setActiveDescriptionSelection({ fieldId, ...emptySelection, color: null });
+        focusDescriptionField(fieldId, 0);
+      }
+      return;
+    }
+
+    setTextValues(prev => ({
+      ...prev,
+      [fieldId]: sanitizedValue
+    }));
+
+    if (selection) {
+      descriptionSelectionRangesRef.current[fieldId] = selection;
+      setActiveDescriptionSelection({
+        fieldId,
+        start: selection.start,
+        end: selection.end,
+        color: selection.end > selection.start
+          ? getDescriptionSelectionColor(sanitizedValue, selection.start, selection.end, fallbackColor)
+          : null
+      });
+      focusDescriptionField(fieldId, selection.start, selection.end);
+    }
+  }, [focusDescriptionField, recordDescriptionHistory, textValues]);
+
+  const handleDescriptionSelectionChange = useCallback((fieldId: string, currentValue: string) => {
+    const editor = descriptionEditorRefs.current[fieldId];
+    if (!editor) return;
+
+    const selection = getDescriptionSelectionOffsets(editor);
+    if (!selection) return;
+
+    const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(fieldId)]);
+    const liveValue = sanitizeDescriptionRichHtml(editor.innerHTML || currentValue, fallbackColor);
+    descriptionSelectionRangesRef.current[fieldId] = selection;
+    setActiveDescriptionSelection({
+      fieldId,
+      start: selection.start,
+      end: selection.end,
+      color: selection.end > selection.start
+        ? getDescriptionSelectionColor(liveValue, selection.start, selection.end, fallbackColor)
+        : null
+    });
+  }, [textValues]);
+
+  const applyDescriptionHistorySnapshot = useCallback((fieldId: string, snapshot: DescriptionHistorySnapshot) => {
+    const colorFieldId = getDescriptionColorFieldId(fieldId);
+
+    setTextValues(prev => {
+      const next = {
+        ...prev,
+        [fieldId]: snapshot.value
+      };
+
+      if (snapshot.fallbackColor === DEFAULT_DESCRIPTION_TEXT_COLOR) {
+        delete next[colorFieldId];
+      } else {
+        next[colorFieldId] = snapshot.fallbackColor;
+      }
+
+      return next;
+    });
+
+    descriptionSelectionRangesRef.current[fieldId] = snapshot.selection;
+    setActiveDescriptionSelection({
+      fieldId,
+      start: snapshot.selection.start,
+      end: snapshot.selection.end,
+      color: snapshot.selection.end > snapshot.selection.start
+        ? getDescriptionSelectionColor(snapshot.value, snapshot.selection.start, snapshot.selection.end, snapshot.fallbackColor)
+        : null
+    });
+    focusDescriptionField(fieldId, snapshot.selection.start, snapshot.selection.end);
+  }, [focusDescriptionField]);
+
+  const handleDescriptionColorChange = useCallback((fieldId: string, color: string) => {
+    const editor = descriptionEditorRefs.current[fieldId];
+    const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(fieldId)]);
+    const currentValue = sanitizeDescriptionRichHtml(editor?.innerHTML || textValues[fieldId] || '', fallbackColor);
+    const selection = (editor && getDescriptionSelectionOffsets(editor))
+      || (activeDescriptionSelection.fieldId === fieldId
+        ? { start: activeDescriptionSelection.start, end: activeDescriptionSelection.end }
+        : descriptionSelectionRangesRef.current[fieldId]);
+
+    if (!selection || selection.end <= selection.start) return;
+
+    const plainTextValue = descriptionHtmlToPlainText(currentValue);
+    const totalTextLength = plainTextValue.replace(/\n/g, '').length;
+    const selectedTextLength = plainTextValue.slice(selection.start, selection.end).replace(/\n/g, '').length;
+    if (selectedTextLength === 0) return;
+
+    const historyBaseSnapshot = captureDescriptionSnapshot(fieldId, currentValue, selection, fallbackColor);
+    const normalizedColor = normalizeDescriptionColor(color);
+    const coversAllText = totalTextLength > 0
+      && selection.start === 0
+      && selection.end === plainTextValue.length
+      && selectedTextLength === totalTextLength;
+
+    let nextValue = applyDescriptionColorToHtml(currentValue, selection.start, selection.end, normalizedColor, fallbackColor);
+    const colorFieldId = getDescriptionColorFieldId(fieldId);
+
+    if (!isApplyingDescriptionHistoryRef.current) {
+      recordDescriptionHistory(fieldId, historyBaseSnapshot);
+    }
+
+    if (coversAllText) {
+      nextValue = sanitizeDescriptionRichHtml(nextValue, normalizedColor);
+      setTextValues(prev => {
+        const next = {
+          ...prev,
+          [fieldId]: nextValue
+        };
+
+        if (normalizedColor === DEFAULT_DESCRIPTION_TEXT_COLOR) {
+          delete next[colorFieldId];
+        } else {
+          next[colorFieldId] = normalizedColor;
+        }
+
+        return next;
+      });
+
+      if (!isApplyingDescriptionHistoryRef.current) {
+        recordDescriptionHistory(fieldId, {
+          value: nextValue,
+          selection,
+          fallbackColor: normalizedColor
+        });
+      }
+    } else {
+      nextValue = sanitizeDescriptionRichHtml(nextValue, fallbackColor);
+      setTextValues(prev => ({
+        ...prev,
+        [fieldId]: nextValue
+      }));
+
+      if (!isApplyingDescriptionHistoryRef.current) {
+        recordDescriptionHistory(fieldId, {
+          value: nextValue,
+          selection,
+          fallbackColor
+        });
+      }
+    }
+
+    descriptionSelectionRangesRef.current[fieldId] = selection;
+    setActiveDescriptionSelection({
+      fieldId,
+      start: selection.start,
+      end: selection.end,
+      color: normalizedColor
+    });
+    focusDescriptionField(fieldId, selection.start, selection.end);
+  }, [activeDescriptionSelection, captureDescriptionSnapshot, focusDescriptionField, recordDescriptionHistory, textValues]);
+
+  const handleDescriptionFocus = useCallback((fieldId: string, currentValue: string) => {
+    requestAnimationFrame(() => {
+      const initialSnapshot = captureDescriptionSnapshot(fieldId, currentValue);
+      if (!descriptionHistoryRef.current[fieldId]?.length) {
+        recordDescriptionHistory(fieldId, initialSnapshot);
+      }
+      handleDescriptionSelectionChange(fieldId, currentValue);
+    });
+  }, [captureDescriptionSnapshot, handleDescriptionSelectionChange, recordDescriptionHistory]);
+
+  const handleDescriptionBlur = useCallback((fieldId: string, currentValue: string) => {
+    descriptionPendingSnapshotRef.current[fieldId] = null;
+
+    if (extractDescriptionPoints(currentValue).length > 0) return;
+
+    setTextValues(prev => ({
+      ...prev,
+      [fieldId]: ''
+    }));
+    descriptionSelectionRangesRef.current[fieldId] = { start: 0, end: 0 };
+
+    setActiveDescriptionSelection(prev => (
+      prev.fieldId === fieldId
+        ? { fieldId, start: 0, end: 0, color: null }
+        : prev
+    ));
+  }, []);
+
+  const handleDescriptionBeforeInput = useCallback((fieldId: string) => {
+    // 在浏览器真正改写 DOM 前记录快照，供 Ctrl/Cmd+Z 撤销普通输入。
+    if (isComposingRef.current || isApplyingDescriptionHistoryRef.current) {
+      return;
+    }
+
+    descriptionPendingSnapshotRef.current[fieldId] = captureDescriptionSnapshot(fieldId);
+  }, [captureDescriptionSnapshot]);
+
+  const handleDescriptionInput = useCallback((fieldId: string, event: React.FormEvent<HTMLDivElement>) => {
+    // 如果正在IME组合中（如中文输入法），跳过处理，避免重复转义。
+    if (isComposingRef.current) {
+      return;
+    }
+
+    const element = event.currentTarget;
+    const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(fieldId)]);
+    const historyBaseSnapshot = descriptionPendingSnapshotRef.current[fieldId] || null;
+    descriptionPendingSnapshotRef.current[fieldId] = null;
+    const tokens = descriptionHtmlToCharTokens(element.innerHTML, fallbackColor);
+    let normalizedHtml = descriptionCharTokensToHtml(tokens, fallbackColor);
+    const plainText = descriptionHtmlToPlainText(normalizedHtml);
+    // 选区偶发丢失时，退回到最近一次选区或文本末尾，确保自动格式化仍能触发。
+    const selection = getDescriptionSelectionOffsets(element)
+      || descriptionSelectionRangesRef.current[fieldId]
+      || { start: plainText.length, end: plainText.length };
+
+    const currentLineIndex = plainText.slice(0, selection.start).split('\n').length - 1;
+    const inputHandler = getListInputHandler(fieldId);
+    const result = inputHandler({
+      text: plainText,
+      cursorPosition: selection.start,
+      currentLineIndex
+    });
+
+    if (result.handled && result.newText !== undefined) {
+      normalizedHtml = descriptionPlainTextToHtml(result.newText);
+      const nextCursor = result.newCursorPos ?? selection.start;
+      handleDescriptionTextChange(
+        fieldId,
+        normalizedHtml,
+        { start: nextCursor, end: nextCursor },
+        fallbackColor,
+        historyBaseSnapshot
+      );
+      return;
+    }
+
+    handleDescriptionTextChange(fieldId, normalizedHtml, selection, fallbackColor, historyBaseSnapshot);
+  }, [getListInputHandler, handleDescriptionTextChange, textValues]);
+
+  const handleDescriptionPaste = useCallback((fieldId: string, event: React.ClipboardEvent<HTMLDivElement>) => {
+    const pastedText = event.clipboardData.getData('text/plain');
+    if (!pastedText) return;
+
+    event.preventDefault();
+
+    const currentValue = textValues[fieldId] || '';
+    const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(fieldId)]);
+    const historyBaseSnapshot = captureDescriptionSnapshot(fieldId, currentValue);
+    const selection = getDescriptionSelectionOffsets(event.currentTarget)
+      || descriptionSelectionRangesRef.current[fieldId]
+      || { start: descriptionHtmlToPlainText(currentValue).length, end: descriptionHtmlToPlainText(currentValue).length };
+    const normalizedText = pastedText.replace(/\r\n/g, '\n');
+    const nonEmptyLines = normalizedText.split('\n').filter(line => line.trim());
+    const formattedText = nonEmptyLines.length > 1
+      ? buildDescriptionPasteValue(normalizedText)
+      : normalizedText;
+
+    if (!formattedText) return;
+
+    const currentPlainText = descriptionHtmlToPlainText(currentValue);
+    const shouldReplaceAll = extractDescriptionPoints(currentValue).length === 0;
+
+    if (shouldReplaceAll && nonEmptyLines.length > 1) {
+      handleDescriptionTextChange(
+        fieldId,
+        descriptionPlainTextToHtml(formattedText),
+        { start: formattedText.length, end: formattedText.length },
+        fallbackColor,
+        historyBaseSnapshot
+      );
+      return;
+    }
+
+    const prefix = currentPlainText.slice(0, selection.start);
+    const suffix = currentPlainText.slice(selection.end);
+    const needsLeadingNewline = nonEmptyLines.length > 1 && prefix.length > 0 && !prefix.endsWith('\n');
+    const needsTrailingNewline = nonEmptyLines.length > 1 && suffix.length > 0 && !suffix.startsWith('\n');
+    const insertion = `${needsLeadingNewline ? '\n' : ''}${formattedText}${needsTrailingNewline ? '\n' : ''}`;
+    const nextValue = insertDescriptionTextIntoHtml(currentValue, selection.start, selection.end, insertion, fallbackColor);
+    const nextCursor = selection.start + insertion.length;
+
+    handleDescriptionTextChange(fieldId, nextValue, {
+      start: nextCursor,
+      end: nextCursor
+    }, fallbackColor, historyBaseSnapshot);
+  }, [captureDescriptionSnapshot, handleDescriptionTextChange, textValues]);
+
+
+
+
+  const handleDescriptionKeyDown = useCallback((fieldId: string, event: React.KeyboardEvent<HTMLDivElement>) => {
+    const currentValue = textValues[fieldId] || '';
+    const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(fieldId)]);
+    // 优先读取当前 DOM 内容，避免刚输入完文字立刻回车时仍按旧状态文本处理。
+    const liveHtml = event.currentTarget.innerHTML || currentValue;
+    const livePlainText = descriptionHtmlToPlainText(liveHtml);
+    const selection = getDescriptionSelectionOffsets(event.currentTarget)
+      || descriptionSelectionRangesRef.current[fieldId]
+      || { start: livePlainText.length, end: livePlainText.length };
+    const { start, end } = selection;
+    const history = descriptionHistoryRef.current[fieldId] || [];
+    const historyIndex = descriptionHistoryIndexRef.current[fieldId] ?? (history.length - 1);
+
+    // 拦截 Ctrl/Cmd+Z，仅作用于自定义描述输入框，避免 React 回写打断原生撤销栈。
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.altKey) {
+      event.preventDefault();
+
+      if (event.shiftKey) {
+        const redoIndex = historyIndex + 1;
+        if (redoIndex < history.length) {
+          isApplyingDescriptionHistoryRef.current = true;
+          descriptionHistoryIndexRef.current[fieldId] = redoIndex;
+          applyDescriptionHistorySnapshot(fieldId, history[redoIndex]);
+          requestAnimationFrame(() => {
+            isApplyingDescriptionHistoryRef.current = false;
+          });
+        }
+        return;
+      }
+
+      const latestSnapshot = captureDescriptionSnapshot(fieldId, liveHtml, selection, fallbackColor);
+      const activeSnapshot = historyIndex >= 0 ? history[historyIndex] : null;
+      if (
+        !activeSnapshot
+        || activeSnapshot.value !== latestSnapshot.value
+        || activeSnapshot.selection.start !== latestSnapshot.selection.start
+        || activeSnapshot.selection.end !== latestSnapshot.selection.end
+        || activeSnapshot.fallbackColor !== latestSnapshot.fallbackColor
+      ) {
+        recordDescriptionHistory(fieldId, latestSnapshot);
+      }
+
+      const undoHistory = descriptionHistoryRef.current[fieldId] || [];
+      const undoIndex = Math.max(0, (descriptionHistoryIndexRef.current[fieldId] ?? (undoHistory.length - 1)) - 1);
+      if (undoHistory[undoIndex]) {
+        isApplyingDescriptionHistoryRef.current = true;
+        descriptionHistoryIndexRef.current[fieldId] = undoIndex;
+        applyDescriptionHistorySnapshot(fieldId, undoHistory[undoIndex]);
+        requestAnimationFrame(() => {
+          isApplyingDescriptionHistoryRef.current = false;
+        });
+      }
+      return;
+    }
+
+    // ===== 使用列表编辑工具处理键盘事件 =====
+    // 只处理 Enter、Backspace、Tab 键
+    if (['Enter', 'Backspace', 'Tab'].includes(event.key)) {
+      const dispatcher = getListDispatcher(fieldId);
+      const historyBaseSnapshot = captureDescriptionSnapshot(fieldId, liveHtml, selection, fallbackColor);
+      
+      // 创建一个原生键盘事件对象（用于分发器）
+      const nativeEvent = {
+        key: event.key,
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        preventDefault: () => event.preventDefault(),
+      } as KeyboardEvent;
+
+      // 使用分发器处理事件
+      const result = dispatcher.dispatch(nativeEvent, livePlainText, start, end);
+
+      if (result.handled && result.newText !== undefined) {
+        event.preventDefault();
+        
+        // 将纯文本转换回 HTML（保留颜色信息）
+        const newHtml = descriptionPlainTextToHtml(result.newText);
+        
+        // 应用修改
+        handleDescriptionTextChange(fieldId, newHtml, {
+          start: result.newCursorPos ?? start,
+          end: result.newCursorPos ?? start
+        }, fallbackColor, historyBaseSnapshot);
+        return;
+      }
+    }
+
+    // ===== 原有的简单逻辑作为后备 =====
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      // 列表编辑工具未处理时，只进行普通换行。
+      const historyBaseSnapshot = captureDescriptionSnapshot(fieldId, liveHtml, selection, fallbackColor);
+      const insertion = '\n';
+      const nextValue = insertDescriptionTextIntoHtml(liveHtml, start, end, insertion, fallbackColor);
+      const nextCursor = start + insertion.length;
+
+      handleDescriptionTextChange(fieldId, nextValue, {
+        start: nextCursor,
+        end: nextCursor
+      }, fallbackColor, historyBaseSnapshot);
+      return;
+    }
+  }, [applyDescriptionHistorySnapshot, captureDescriptionSnapshot, getListDispatcher, handleDescriptionTextChange, recordDescriptionHistory, textValues]);
 
   // 点击空白区域关闭添加容器菜单
   useEffect(() => {
@@ -820,29 +2027,10 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
   // 当前选中的图片坑位ID（用于粘贴功能）
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
-  // 描述模块额外条目（动态添加）- 支持多个描述模块，key为模块ID
-  // 从 initialTextValues 中恢复已保存的动态条目
-  const [extraDescItems, setExtraDescItems] = useState<Record<string, number[]>>(() => {
-    const restored: Record<string, number[]> = {};
-    Object.keys(initialTextValues).forEach(key => {
-      // 匹配 extra-impression-{itemId}（只要 key 存在就恢复，不要求内容非空）
-      const impressionMatch = key.match(/^extra-impression-(\d+)$/);
-      if (impressionMatch && initialTextValues[key] !== undefined) {
-        if (!restored['overall']) restored['overall'] = [];
-        restored['overall'].push(parseInt(impressionMatch[1], 10));
-      }
-      // 匹配 extra-desc-{moduleId}-{itemId}（只要 key 存在就恢复）
-      const descMatch = key.match(/^extra-desc-(.+)-(\d+)$/);
-      if (descMatch && initialTextValues[key] !== undefined) {
-        const moduleId = descMatch[1];
-        if (!restored[moduleId]) restored[moduleId] = [];
-        restored[moduleId].push(parseInt(descMatch[2], 10));
-      }
-    });
-    return restored;
-  });
+  // 描述模块额外条目（动态添加）- 仅保留整体印象与旧版描述模块的兼容恢复
+  const [extraDescItems, setExtraDescItems] = useState<Record<string, number[]>>(() => createExtraDescItemsState(initialTextValues));
 
-  // 添加描述条目（支持任意描述模块）
+  // 添加描述条目（当前仅用于整体印象模块）
   const addDescItem = useCallback((moduleId: string) => {
     const itemId = Date.now();
     setExtraDescItems(prev => ({
@@ -857,7 +2045,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
     }));
   }, []);
 
-  // 删除描述条目
+  // 删除描述条目（当前仅用于整体印象模块）
   const removeDescItem = useCallback((moduleId: string, itemId: number) => {
     setExtraDescItems(prev => ({
       ...prev,
@@ -866,7 +2054,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
     // 清理对应的文字值
     setTextValues(prev => {
       const newValues = { ...prev };
-      delete newValues[`extra-desc-${moduleId}-${itemId}`];
+      const keyPrefix = moduleId === 'overall' ? 'extra-impression' : `extra-desc-${moduleId}`;
+      delete newValues[`${keyPrefix}-${itemId}`];
       return newValues;
     });
   }, []);
@@ -991,6 +2180,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
       alert('请填写所有必填项:\n' + validation.errors.join('\n'));
       return;
     }
+
+    const sanitizedTextValues = sanitizeCustomDescriptionTextValues(localContainers, textValues);
     
     // 合并 imageValues 和 extraImages
     const allImageValues = { ...imageValues };
@@ -1116,8 +2307,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
       }
     }
     
-    onSave(textValues, allImageValues);
-  }, [validation, textValues, imageValues, extraImages, onSave, canEditContainers, localContainers, template, localTemplateName, localTemplateVersion]);
+    onSave(sanitizedTextValues, allImageValues);
+  }, [validation, textValues, imageValues, extraImages, onSave, canEditContainers, localContainers, template, localTemplateName, localTemplateVersion, listEntryCounts, localFieldLabels]);
 
   // 导出（合并主图片和额外图片）
   const handleExport = useCallback(() => {
@@ -1125,6 +2316,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
       alert('请填写所有必填项:\n' + validation.errors.join('\n'));
       return;
     }
+
+    const sanitizedTextValues = sanitizeCustomDescriptionTextValues(localContainers, textValues);
     
     // 合并 imageValues 和 extraImages
     const allImageValues = { ...imageValues };
@@ -1232,8 +2425,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
       templateRegistry.register(updatedTemplate);
     }
     
-    onExport?.(textValues, allImageValues);
-  }, [validation, textValues, imageValues, extraImages, onExport, canEditContainers, localContainers, template, localTemplateName, localTemplateVersion]);
+    onExport?.(sanitizedTextValues, allImageValues);
+  }, [validation, textValues, imageValues, extraImages, onExport, canEditContainers, localContainers, template, localTemplateName, localTemplateVersion, listEntryCounts, localFieldLabels]);
 
   // 获取当前模版最匹配的技能框架（或动态生成）
 // 动态生成 skill，支持容器排序后更新
@@ -1706,6 +2899,29 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
               return null;
             }
 
+            const isCustomDescriptionModule = moduleType === 'description'
+              && module.id.startsWith('custom-desc-')
+              && moduleTextFields.length > 0;
+            const customDescriptionField = isCustomDescriptionModule ? moduleTextFields[0] : null;
+            const customDescriptionValue = customDescriptionField ? (textValues[customDescriptionField.id] || '') : '';
+            const customDescriptionColor = customDescriptionField
+              ? normalizeDescriptionColor(textValues[getDescriptionColorFieldId(customDescriptionField.id)])
+              : DEFAULT_DESCRIPTION_TEXT_COLOR;
+            const customDescriptionSelection = customDescriptionField && activeDescriptionSelection.fieldId === customDescriptionField.id
+              ? activeDescriptionSelection
+              : null;
+            const canChangeDescriptionColor = Boolean(
+              customDescriptionField
+              && customDescriptionSelection
+              && descriptionHtmlToPlainText(customDescriptionValue)
+                .slice(customDescriptionSelection.start, customDescriptionSelection.end)
+                .replace(/\n/g, '')
+                .length > 0
+            );
+            const activeDescriptionColor = canChangeDescriptionColor
+              ? (customDescriptionSelection?.color || customDescriptionColor)
+              : null;
+
             return (
               <div
                 id={`section-${module.id}`}
@@ -1733,20 +2949,68 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                     />
                   )}
 
-                  {/* 自定义容器：标题可编辑；非自定义容器：静态显示 */}
-                  {canEditContainers && localContainers.some(c => c.id === module.id) ? (
-                    <input
-                      type="text"
-                      className="module-title-input"
-                      value={module.title}
-                      onChange={(e) => handleContainerLabelChange(module.id, e.target.value)}
-                      placeholder="请输入条目标题"
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      draggable={false}
-                    />
-                  ) : (
-                    <h3 className="module-title">{module.title}</h3>
+                  <div className="module-header-main">
+                    {/* 自定义容器：完全复用 header 的展示态/编辑态结构，避免 h3 与 input 盒模型不一致导致视觉偏移。 */}
+                    {canEditContainers && localContainers.some(c => c.id === module.id) ? (
+                      editingModuleTitleId === module.id ? (
+                        <input
+                          type="text"
+                          className="header-inline-input module-title-input module-title-input-inline"
+                          value={module.title}
+                          onChange={(e) => handleContainerLabelChange(module.id, e.target.value)}
+                          placeholder="请输入条目标题"
+                          autoFocus
+                          onBlur={() => setEditingModuleTitleId(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') setEditingModuleTitleId(null);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          draggable={false}
+                        />
+                      ) : (
+                        <span
+                          className="module-title module-title-editable"
+                          title="双击编辑条目标题"
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditingModuleTitleId(module.id);
+                          }}
+                        >{module.title}</span>
+                      )
+                    ) : (
+                      <span className="module-title">{module.title}</span>
+                    )}
+                  </div>
+
+                  {/* 自定义描述模块：颜色控件放到标题末端，且仅在选中文字时允许改色 */}
+                  {isCustomDescriptionModule && customDescriptionField && (
+                    <div className="description-header-tools" onMouseDown={(e) => e.stopPropagation()}>
+                      <span className="description-toolbar-label">字色</span>
+                      <div className="description-color-options description-color-options-compact">
+                        {DESCRIPTION_COLOR_OPTIONS.map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            className={`description-color-btn${activeDescriptionColor === color ? ' is-active' : ''}`}
+                            style={{ backgroundColor: color }}
+                            title={canChangeDescriptionColor ? `将选中文字设置为 ${color}` : '请先选中文字'}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => handleDescriptionColorChange(customDescriptionField.id, color)}
+                            disabled={!canChangeDescriptionColor}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          className="description-color-picker"
+                          value={activeDescriptionColor || customDescriptionColor}
+                          onChange={(e) => handleDescriptionColorChange(customDescriptionField.id, e.target.value)}
+                          title={canChangeDescriptionColor ? '自定义选中文字颜色' : '请先选中文字'}
+                          disabled={!canChangeDescriptionColor}
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
                 
@@ -1889,6 +3153,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                   {/* 文字字段 */}
                   {moduleTextFields
                     .filter(field => isFieldVisible(field.id))
+                    .filter(field => !(moduleType === 'description' && module.id.startsWith('custom-desc-') && field === moduleTextFields[0]))
                     .map(field => (
                       <div key={field.id} className="text-field-wrapper">
                         {/* 自定义容器：小标题可编辑；非自定义容器：静态显示 */}
@@ -1953,45 +3218,47 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                     </div>
                   )}
 
-                  {/* 自定义描述模块：额外条目 */}
-                  {moduleType === 'description' && module.id !== 'overall' && (extraDescItems[module.id] || []).map(itemId => (
-                    <div key={itemId} className="text-field-wrapper extra-item">
-                      {/* 自定义容器：小标题可编辑；非自定义容器：静态显示 */}
-                      {canEditContainers && localContainers.some(c => c.id === module.id) ? (
-                        <input
-                          type="text"
-                          className="field-label-input"
-                          value={getFieldLabel(`extra-desc-${module.id}-${itemId}`, `${module.title}-要点`)}
-                          onChange={(e) => handleFieldLabelChange(`extra-desc-${module.id}-${itemId}`, e.target.value)}
-                          placeholder="输入小标题"
-                        />
-                      ) : (
-                        <label className="field-label">{getFieldLabel(`extra-desc-${module.id}-${itemId}`, `${module.title}-要点`)}</label>
-                      )}
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={textValues[`extra-desc-${module.id}-${itemId}`] || ''}
-                        onChange={(e) => handleTextChange(`extra-desc-${module.id}-${itemId}`, e.target.value)}
-                        placeholder="请输入要点内容"
-                      />
-                      <button 
-                        className="btn-remove-item"
-                        onClick={() => removeDescItem(module.id, itemId)}
-                        title="删除此条目"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                  
-                  {/* 自定义描述模块：添加条目按钮 */}
-                  {moduleType === 'description' && module.id !== 'overall' && (
-                    <div className="list-table-add-entry-btn" onClick={() => addDescItem(module.id)}>
-                      <span className="add-icon">+</span>
-                      <span className="add-text">添加条目</span>
-                    </div>
-                  )}
+                  {/* 自定义描述模块：单一项目符号输入区 */}
+                  {moduleType === 'description' && module.id.startsWith('custom-desc-') && moduleTextFields.length > 0 && (() => {
+                    const descriptionField = moduleTextFields[0];
+                    const currentValue = textValues[descriptionField.id] || '';
+                    const currentColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(descriptionField.id)]);
+
+                    return (
+                      <div className="text-field-wrapper description-textarea-wrapper">
+                        <div className="description-editor-shell">
+                          <div
+                            ref={node => {
+                              descriptionEditorRefs.current[descriptionField.id] = node;
+                            }}
+                            className="field-input description-rich-editor"
+                            contentEditable
+                            suppressContentEditableWarning
+                            role="textbox"
+                            aria-multiline="true"
+                            spellCheck={false}
+                            data-placeholder="点击后输入内容，回车新增条目，Shift+Enter 条目内换行"
+                            dangerouslySetInnerHTML={{ __html: currentValue }}
+                            onBeforeInput={() => handleDescriptionBeforeInput(descriptionField.id)}
+                            onInput={(e) => handleDescriptionInput(descriptionField.id, e)}
+                            onCompositionStart={() => { isComposingRef.current = true; }}
+                            onCompositionEnd={(e) => {
+                              isComposingRef.current = false;
+                              // 组合结束后，手动触发一次输入处理
+                              handleDescriptionInput(descriptionField.id, e as unknown as React.FormEvent<HTMLDivElement>);
+                            }}
+                            onFocus={() => handleDescriptionFocus(descriptionField.id, currentValue)}
+                            onBlur={() => handleDescriptionBlur(descriptionField.id, textValues[descriptionField.id] || '')}
+                            onPaste={(e) => handleDescriptionPaste(descriptionField.id, e)}
+                            onKeyDown={(e) => handleDescriptionKeyDown(descriptionField.id, e)}
+                            onKeyUp={() => handleDescriptionSelectionChange(descriptionField.id, textValues[descriptionField.id] || '')}
+                            onMouseUp={() => handleDescriptionSelectionChange(descriptionField.id, textValues[descriptionField.id] || '')}
+                            style={{ color: currentColor }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* 图片坑位（非列表表格模块也支持选中 + 粘贴，调用统一图片网格渲染函数） */}
                   {(moduleImageSlots.length > 0 || moduleType === 'table') && (

@@ -370,7 +370,7 @@
   list-style: none;
 }
 
-.preview-overall-item {
+ .preview-overall-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -380,10 +380,23 @@
   border: none;
 }
 
-.preview-overall-text {
+/* 项目符号单独占位，保证条目内换行后文本与首行内容对齐。 */
+.preview-overall-bullet {
+  flex: 0 0 auto;
   font-size: 14px;
   line-height: 1.8;
   color: rgba(255, 255, 255, 0.85);
+}
+
+.preview-overall-text {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  font-size: 14px;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* =============================================

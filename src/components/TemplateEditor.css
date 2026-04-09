@@ -252,10 +252,28 @@
   border-bottom: 1px solid rgba(236, 232, 225, 0.08);
 }
 
+/* 模块标题主区域占满剩余空间，复用 header 的展示态/编辑态切换方式。 */
+.template-editor .module-header-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* 自定义描述模块：标题尾部颜色工具。 */
+.template-editor .description-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .template-editor .module-icon {
   font-size: 18px;
 }
 
+/* 条目标题展示态：直接参照 header 的 badge-text-editable 做法，仅保留条目自身字号与颜色。 */
 .template-editor .module-title {
   margin: 0;
   font-size: 13px;
@@ -263,20 +281,41 @@
   color: #ECE8E1;
 }
 
-/* 可编辑的模块标题输入框 */
+/* 条目标题的展示态：和 header 一样只提供轻量 hover 反馈，不额外制造高度补偿。 */
+.template-editor .module-title-editable {
+  cursor: default;
+  border-radius: 4px;
+  padding: 0 4px;
+  transition: background 0.2s ease;
+}
+
+.template-editor .module-title-editable:hover {
+  background: rgba(236, 232, 225, 0.08);
+}
+
+/* 条目标题输入框：在复用 header-inline-input 盒模型的前提下，显式锁定单行输入参数，避免中文基线受全局 line-height 影响而视觉偏下。 */
 .template-editor .module-title-input {
   margin: 0;
+  height: 24px;
+  line-height: 24px;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   color: #ECE8E1;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 2px 6px;
-  background: transparent;
+  padding: 0 6px;
+  background: rgba(236, 232, 225, 0.08);
   outline: none;
+  appearance: none;
+  box-sizing: border-box;
+  vertical-align: middle;
   transition: all 0.2s ease;
   min-width: 80px;
   max-width: 200px;
+}
+
+/* 条目标题进入编辑态时，仅保留条目色系边框；高度与留白已在 module-title-input 中统一。 */
+.template-editor .module-title-input-inline {
+  border-color: rgba(236, 232, 225, 0.25);
 }
 
 .template-editor .module-title-input:hover {
@@ -356,6 +395,120 @@
   outline: none;
   border-color: #FF4655;
   box-shadow: 0 0 0 2px rgba(255, 70, 85, 0.15);
+}
+
+/* 自定义描述模块：类似 word 表格的单一输入容器。 */
+.template-editor .description-textarea-wrapper {
+  margin-top: 2px;
+}
+
+.template-editor .description-editor-shell {
+  border: 1px solid rgba(236, 232, 225, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.template-editor .description-editor-shell:hover {
+  border-color: rgba(255, 70, 85, 0.4);
+}
+
+.template-editor .description-editor-shell:focus-within {
+  border-color: #FF4655;
+  box-shadow: 0 0 0 2px rgba(255, 70, 85, 0.15);
+  background: rgba(255, 70, 85, 0.03);
+}
+
+.template-editor .description-toolbar-label {
+  font-size: 12px;
+  color: rgba(236, 232, 225, 0.55);
+  white-space: nowrap;
+}
+
+.template-editor .description-color-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 标题尾部使用更紧凑的颜色按钮间距。 */
+.template-editor .description-color-options-compact {
+  gap: 6px;
+}
+
+.template-editor .description-color-btn,
+.template-editor .description-color-picker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.template-editor .description-color-btn {
+  border: 1px solid rgba(236, 232, 225, 0.15);
+  padding: 0;
+}
+
+.template-editor .description-color-btn:hover,
+.template-editor .description-color-picker:hover {
+  transform: scale(1.08);
+}
+
+.template-editor .description-color-btn.is-active,
+.template-editor .description-color-picker:focus {
+  box-shadow: 0 0 0 2px rgba(255, 70, 85, 0.25);
+}
+
+/* 未选中文字时按钮需要明显不可用。 */
+.template-editor .description-color-btn:disabled,
+.template-editor .description-color-picker:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+  transform: none;
+}
+
+.template-editor .description-color-picker {
+  appearance: none;
+  border: 1px solid rgba(236, 232, 225, 0.2);
+  background: transparent;
+  overflow: hidden;
+  padding: 0;
+}
+
+.template-editor .description-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.template-editor .description-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+/* 富文本输入区替代 textarea，保留相同留白与行高。 */
+.template-editor .description-rich-editor {
+  min-height: 156px;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  caret-color: #FF4655;
+  outline: none;
+}
+
+/* 空内容时用 data-placeholder 模拟原 placeholder 效果。 */
+.template-editor .description-rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(236, 232, 225, 0.3);
+  pointer-events: none;
 }
 
 /* ===== 图片坑位网格 — 4列 ===== */
@@ -732,11 +885,11 @@
   gap: 2px;
 }
 
-/* 模块标题区域的拖动手柄 */
+/* 模块标题区域的拖动手柄：与标题的间距统一交给 module-header 的 gap 控制。 */
 .template-editor .module-drag-handle {
   width: 16px;
   min-height: 24px;
-  margin-right: 8px;
+  margin-right: 0;
   opacity: 0.5;
   transition: opacity 0.2s ease;
 }
@@ -807,12 +960,13 @@
   display: flex;
 }
 
+/* 导航删除按钮 hover 态保持与项目主色一致。 */
 .template-editor .nav-item-delete:hover {
-  background: #FF4655;
-  color: white;
+  color: #FF4655;
+  background: rgba(255, 70, 85, 0.12);
 }
 
-/* ===== 添加容器样式 ===== */
+/* 恢复左下角“添加容器”区域的旧版正确样式。 */
 .template-editor .add-container-wrapper {
   position: relative;
   margin-top: auto;
@@ -820,6 +974,7 @@
   flex-shrink: 0;
 }
 
+/* 恢复虚线按钮外观，避免退回浏览器默认按钮样式。 */
 .template-editor .add-container-btn {
   width: 100%;
   padding: 8px 12px;
@@ -837,6 +992,7 @@
   color: rgba(236, 232, 225, 0.8);
 }
 
+/* 恢复旧版下拉菜单面板样式。 */
 .template-editor .add-container-menu {
   position: absolute;
   bottom: 100%;
@@ -859,9 +1015,8 @@
   border: none;
   background: transparent;
   text-align: left;
-  font-size: 13px;
-  font-weight: 500;
   color: rgba(236, 232, 225, 0.9);
+  font-size: 13px;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
 }
@@ -874,3 +1029,206 @@
 .template-editor .add-container-menu button:not(:last-child) {
   border-bottom: 1px solid rgba(236, 232, 225, 0.08);
 }
+
+/* ===== 列表编辑器样式 ===== */
+
+/**
+ * 列表编辑器容器
+ * 为列表内容提供适当的间距和对齐
+ */
+.template-editor .list-editor {
+  line-height: 1.8;
+}
+
+/**
+ * 列表项基础样式
+ * 确保列表项有适当的左边距和对齐
+ */
+.template-editor .description-rich-editor .list-item {
+  position: relative;
+  margin-bottom: 2px;
+}
+
+/**
+ * 项目符号样式 - 无序列表（圆点）
+ */
+.template-editor .description-rich-editor .list-bullet::before {
+  content: '·';
+  position: absolute;
+  left: 0;
+  color: rgba(236, 232, 225, 0.7);
+  font-weight: 500;
+}
+
+/**
+ * 项目符号样式 - 有序列表（数字）
+ * 数字通过 data-number 属性动态设置
+ */
+.template-editor .description-rich-editor .list-numbered::before {
+  content: attr(data-number) '.';
+  position: absolute;
+  left: 0;
+  color: rgba(236, 232, 225, 0.7);
+  font-weight: 500;
+  min-width: 24px;
+  text-align: left;
+}
+
+/**
+ * 项目符号样式 - 箭头列表
+ */
+.template-editor .description-rich-editor .list-arrow::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: rgba(236, 232, 225, 0.7);
+  font-weight: 500;
+}
+
+/**
+ * 多级列表缩进样式
+ * 每一级增加 24px 的缩进
+ */
+.template-editor .description-rich-editor .list-level-0 {
+  padding-left: 16px;
+}
+
+.template-editor .description-rich-editor .list-level-1 {
+  padding-left: 40px;
+}
+
+.template-editor .description-rich-editor .list-level-2 {
+  padding-left: 64px;
+}
+
+.template-editor .description-rich-editor .list-level-3 {
+  padding-left: 88px;
+}
+
+.template-editor .description-rich-editor .list-level-4 {
+  padding-left: 112px;
+}
+
+.template-editor .description-rich-editor .list-level-5 {
+  padding-left: 136px;
+}
+
+.template-editor .description-rich-editor .list-level-6 {
+  padding-left: 160px;
+}
+
+/**
+ * 软换行样式（Shift+Enter）
+ * 保持与父列表项相同的缩进，但不显示项目符号
+ */
+.template-editor .description-rich-editor .soft-break {
+  display: block;
+  margin-top: 0;
+}
+
+/**
+ * 软换行缩进对齐
+ * 确保软换行的内容与上一行的文本对齐（跳过项目符号）
+ */
+.template-editor .description-rich-editor .soft-break-indent {
+  padding-left: 24px;
+}
+
+/**
+ * 不同层级列表的项目符号颜色变化
+ * 层级越深，颜色越淡
+ */
+.template-editor .description-rich-editor .list-level-0.list-bullet::before,
+.template-editor .description-rich-editor .list-level-0.list-numbered::before,
+.template-editor .description-rich-editor .list-level-0.list-arrow::before {
+  color: rgba(236, 232, 225, 0.85);
+}
+
+.template-editor .description-rich-editor .list-level-1.list-bullet::before,
+.template-editor .description-rich-editor .list-level-1.list-numbered::before,
+.template-editor .description-rich-editor .list-level-1.list-arrow::before {
+  color: rgba(236, 232, 225, 0.7);
+}
+
+.template-editor .description-rich-editor .list-level-2.list-bullet::before,
+.template-editor .description-rich-editor .list-level-2.list-numbered::before,
+.template-editor .description-rich-editor .list-level-2.list-arrow::before {
+  color: rgba(236, 232, 225, 0.6);
+}
+
+.template-editor .description-rich-editor .list-level-3.list-bullet::before,
+.template-editor .description-rich-editor .list-level-3.list-numbered::before,
+.template-editor .description-rich-editor .list-level-3.list-arrow::before {
+  color: rgba(236, 232, 225, 0.5);
+}
+
+/**
+ * 空列表项样式
+ * 为空列表项提供视觉提示（淡化的提示文字）
+ */
+.template-editor .description-rich-editor .list-item-empty::after {
+  content: '（空项目，按退格键删除）';
+  color: rgba(236, 232, 225, 0.25);
+  font-style: italic;
+  font-size: 12px;
+  margin-left: 4px;
+  pointer-events: none;
+}
+
+/**
+ * 列表编辑时的光标样式
+ * 确保光标在列表项中可见且易于识别
+ */
+.template-editor .description-rich-editor:focus .list-item {
+  outline: none;
+}
+
+/**
+ * 当前编辑行的视觉反馈
+ * 当光标在某个列表项中时，提供轻微的背景高亮
+ */
+.template-editor .description-rich-editor .list-item-active {
+  background: rgba(255, 70, 85, 0.05);
+  border-radius: 2px;
+}
+
+/**
+ * 列表项 hover 状态
+ * 提供视觉反馈，便于用户定位
+ */
+.template-editor .description-rich-editor .list-item:hover {
+  background: rgba(236, 232, 225, 0.02);
+  border-radius: 2px;
+}
+
+/**
+ * 嵌套列表的符号样式变化
+ * 不同层级使用不同的符号样式（可选）
+ */
+.template-editor .description-rich-editor .list-level-1.list-bullet::before {
+  content: '◦';
+}
+
+.template-editor .description-rich-editor .list-level-2.list-bullet::before {
+  content: '▪';
+}
+
+.template-editor .description-rich-editor .list-level-3.list-bullet::before {
+  content: '▫';
+}
+
+/**
+ * 编号列表的数字样式
+ */
+.template-editor .description-rich-editor .list-numbered {
+  counter-increment: list-counter;
+}
+
+/**
+ * 列表容器初始化计数器
+ */
+.template-editor .description-rich-editor {
+  counter-reset: list-counter;
+}
+
+ 

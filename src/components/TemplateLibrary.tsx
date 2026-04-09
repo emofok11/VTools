@@ -4,6 +4,7 @@ import { TemplateDefinition, TemplateCategory, ImageData, TemplateHistoryRecord,
 import { templateRegistry, categoryLabels } from '../lib/templateRegistry';
 import { createTemplateFromFigma } from '../lib/figmaImporter';
 import { analyzeImage } from '../lib/imageAnalyzer';
+import { supabaseService } from '../lib/supabaseService';
 import TemplateEditor from './TemplateEditor';
 import KillIconEditor from './KillIconEditor';
 import CreateTemplateModal from './CreateTemplateModal';
@@ -36,20 +37,43 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
   const [refreshTrigger, setRefreshTrigger] = useState(0); // 刷新触发器，用于模板列表刷新
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // 加载历史记录
+  // 加载历史记录和自定义模板
   useEffect(() => {
-    const savedHistory = localStorage.getItem('template-history');
-    if (savedHistory) {
+    const loadData = async () => {
       try {
-        setHistoryRecords(JSON.parse(savedHistory));
+        // 加载历史记录
+        const historyData = await supabaseService.getHistory();
+        if (historyData) {
+          setHistoryRecords(historyData.map(item => item.data));
+        }
+        
+        // 加载自定义模板
+        const templatesData = await supabaseService.getTemplates();
+        if (templatesData) {
+          templatesData.forEach(item => {
+            if (!BUILT_IN_TEMPLATE_IDS.includes(item.id)) {
+              templateRegistry.register(item.data);
+            }
+          });
+          setRefreshTrigger(prev => prev + 1);
+        }
       } catch (e) {
-        console.error('Failed to parse history records', e);
+        console.error('Failed to load data from Supabase, falling back to localStorage', e);
+        const savedHistory = localStorage.getItem('template-history');
+        if (savedHistory) {
+          try {
+            setHistoryRecords(JSON.parse(savedHistory));
+          } catch (parseError) {
+            console.error('Failed to parse history records from localStorage', parseError);
+          }
+        }
       }
-    }
+    };
+    loadData();
   }, []);
 
   // 保存到历史记录
-  const saveToHistory = useCallback((
+  const saveToHistory = useCallback(async (
     template: TemplateDefinition,
     textValues: Record<string, string>,
     imageValues: Record<string, ImageData>,
@@ -68,6 +92,12 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
       updatedAt: now.toISOString()
     };
 
+    try {
+      await supabaseService.saveHistory(newRecord);
+    } catch (e) {
+      console.error('Failed to save history to Supabase', e);
+    }
+
     setHistoryRecords(prev => {
       let updated;
       if (existingRecordId) {
@@ -83,7 +113,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
         localStorage.setItem('template-history', JSON.stringify(updated));
       } catch (e) {
         console.error('Failed to save history to localStorage, might be quota exceeded', e);
-        alert('保存历史记录失败：本地存储空间不足，请尝试清理一些旧的历史记录。');
         // 如果保存失败，不更新状态，避免状态和存储不一致
         return prev;
       }
@@ -465,6 +494,13 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
     
     // 注册模版
     templateRegistry.register(newTemplate);
+    
+    // 保存到 Supabase
+    try {
+      await supabaseService.saveTemplate(newTemplate);
+    } catch (e) {
+      console.error('Failed to save template to Supabase', e);
+    }
     
     // 触发模板列表刷新
     setRefreshTrigger(prev => prev + 1);

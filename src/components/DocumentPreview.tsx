@@ -4,6 +4,297 @@ import { generateDynamicSkill, TemplateModule } from '../lib/templateSkills';
 import { filterVisibleFields } from '../lib/templateUtils'; // 引入公共过滤函数
 import './DocumentPreview.css';
 
+const DESCRIPTION_COLOR_META_SUFFIX = '__color';
+const DEFAULT_DESCRIPTION_TEXT_COLOR = '#ECE8E1';
+const DESCRIPTION_BULLET_REGEXP = /^\s*[·•●▪◦‣\-]\s*/;
+
+function getDescriptionColorFieldId(fieldId: string): string {
+  return `${fieldId}${DESCRIPTION_COLOR_META_SUFFIX}`;
+}
+
+function normalizeDescriptionColor(value?: string): string {
+  if (!value) return DEFAULT_DESCRIPTION_TEXT_COLOR;
+  const normalizedValue = value.trim();
+
+  if (/^#[0-9a-fA-F]{6}$/.test(normalizedValue)) {
+    return normalizedValue.toUpperCase();
+  }
+
+  const rgbMatch = normalizedValue.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (rgbMatch) {
+    const toHex = (channel: string) => Math.max(0, Math.min(255, Number(channel)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+
+    return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
+  }
+
+  return DEFAULT_DESCRIPTION_TEXT_COLOR;
+}
+
+// 判断当前值是否已经是富文本 HTML，兼容旧版纯文本描述内容。
+function isDescriptionRichHtml(value?: string): boolean {
+  return Boolean(value && /<\/?[a-z][^>]*>/i.test(value));
+}
+
+// 转义纯文本里的特殊字符，避免把用户输入误当成 HTML。
+function escapeDescriptionHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// 将纯文本描述转成带 <br> 的 HTML，便于和富文本走同一套解析流程。
+function descriptionPlainTextToHtml(value: string): string {
+  const normalizedText = value.replace(/\r\n/g, '\n');
+  if (!normalizedText) return '';
+  return escapeDescriptionHtml(normalizedText).replace(/\n/g, '<br>');
+}
+
+interface DescriptionCharToken {
+  char: string;
+  color?: string;
+}
+
+interface DescriptionPreviewPoint {
+  lines: DescriptionCharToken[][];
+  markerColor?: string;
+  baseColor?: string;
+}
+
+// 将富文本 HTML 还原为纯文本，便于做内容存在性判断和兼容旧逻辑。
+function descriptionHtmlToPlainText(value?: string): string {
+  if (!value) return '';
+  if (!isDescriptionRichHtml(value)) {
+    return value.replace(/\r\n/g, '\n');
+  }
+
+  const container = document.createElement('div');
+  container.innerHTML = value;
+  const parts: string[] = [];
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent || '');
+      return;
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+
+    const tagName = node.tagName.toLowerCase();
+    if (tagName === 'br') {
+      parts.push('\n');
+      return;
+    }
+
+    node.childNodes.forEach(walk);
+
+    if ((tagName === 'div' || tagName === 'p' || tagName === 'li') && parts[parts.length - 1] !== '\n') {
+      parts.push('\n');
+    }
+  };
+
+  container.childNodes.forEach(walk);
+  return parts.join('').replace(/\u00A0/g, ' ').replace(/\n+$/, '');
+}
+
+// 将富文本描述拍平成字符 token，保留局部字色与换行信息。
+function descriptionHtmlToCharTokens(value?: string, fallbackColor?: string): DescriptionCharToken[] {
+  if (!value) return [];
+
+  const container = document.createElement('div');
+  container.innerHTML = isDescriptionRichHtml(value) ? value : descriptionPlainTextToHtml(value);
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  const tokens: DescriptionCharToken[] = [];
+
+  const pushText = (text: string, color?: string) => {
+    const normalizedColor = color && normalizeDescriptionColor(color) !== normalizedFallbackColor
+      ? normalizeDescriptionColor(color)
+      : undefined;
+
+    Array.from(text.replace(/\u00A0/g, ' ')).forEach(char => {
+      tokens.push({ char, color: normalizedColor });
+    });
+  };
+
+  const walk = (node: Node, inheritedColor?: string) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(node.textContent || '', inheritedColor);
+      return;
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+
+    const tagName = node.tagName.toLowerCase();
+    if (tagName === 'br') {
+      tokens.push({ char: '\n' });
+      return;
+    }
+
+    const rawColor = node.style.color || node.getAttribute('color') || inheritedColor;
+    const normalizedColor = rawColor ? normalizeDescriptionColor(rawColor) : undefined;
+
+    node.childNodes.forEach(child => walk(child, normalizedColor));
+
+    if ((tagName === 'div' || tagName === 'p' || tagName === 'li') && tokens[tokens.length - 1]?.char !== '\n') {
+      tokens.push({ char: '\n' });
+    }
+  };
+
+  container.childNodes.forEach(node => walk(node));
+
+  while (tokens[tokens.length - 1]?.char === '\n') {
+    tokens.pop();
+  }
+
+  return tokens;
+}
+
+function getDescriptionLineText(tokens: DescriptionCharToken[]): string {
+  return tokens.map(token => token.char).join('');
+}
+
+// 编辑器里的续行缩进只用于输入辅助，预览里改为真实换行对齐，因此去掉前导空格。
+function trimDescriptionLineTokens(tokens: DescriptionCharToken[]): DescriptionCharToken[] {
+  let start = 0;
+  while (start < tokens.length && /\s/.test(tokens[start].char)) {
+    start += 1;
+  }
+  return tokens.slice(start);
+}
+
+// 将富文本描述拆成“项目符号 + 多行内容”的结构，保证预览与输入框换行效果一致。
+function extractDescriptionPreviewPoints(value?: string, fallbackColor?: string): DescriptionPreviewPoint[] {
+  if (!value) return [];
+
+  const rawTokens = descriptionHtmlToCharTokens(value, fallbackColor);
+  if (rawTokens.length === 0) return [];
+
+  const lines: DescriptionCharToken[][] = [];
+  let currentLine: DescriptionCharToken[] = [];
+
+  rawTokens.forEach(token => {
+    if (token.char === '\n') {
+      lines.push(currentLine);
+      currentLine = [];
+      return;
+    }
+
+    currentLine.push(token);
+  });
+  lines.push(currentLine);
+
+  const points: DescriptionPreviewPoint[] = [];
+  let currentPoint: DescriptionPreviewPoint | null = null;
+
+  const commitPoint = () => {
+    if (!currentPoint) return;
+
+    const normalizedLines = [...currentPoint.lines];
+    while (normalizedLines.length > 0 && !getDescriptionLineText(normalizedLines[0]).trim()) normalizedLines.shift();
+    while (normalizedLines.length > 0 && !getDescriptionLineText(normalizedLines[normalizedLines.length - 1]).trim()) normalizedLines.pop();
+
+    if (normalizedLines.some(line => getDescriptionLineText(line).trim())) {
+      points.push({
+        ...currentPoint,
+        lines: normalizedLines
+      });
+    }
+
+    currentPoint = null;
+  };
+
+  lines.forEach(lineTokens => {
+    const lineText = getDescriptionLineText(lineTokens);
+    const bulletMatch = lineText.match(DESCRIPTION_BULLET_REGEXP);
+
+    if (bulletMatch) {
+      commitPoint();
+
+      let markerColor = normalizeDescriptionColor(fallbackColor);
+      for (let index = bulletMatch[0].length - 1; index >= 0; index -= 1) {
+        const token = lineTokens[index];
+        if (token && !/\s/.test(token.char)) {
+          markerColor = token.color || normalizeDescriptionColor(fallbackColor);
+          break;
+        }
+      }
+
+      currentPoint = {
+        markerColor,
+        // 续行应回落到字段默认色，不能跟着首行或项目符号颜色一起继承。
+        baseColor: normalizeDescriptionColor(fallbackColor),
+        lines: [trimDescriptionLineTokens(lineTokens.slice(bulletMatch[0].length))]
+      };
+      return;
+    }
+
+    if (lineText.trim()) {
+      const normalizedLine = trimDescriptionLineTokens(lineTokens);
+      if (!currentPoint) {
+        const normalizedBaseColor = normalizeDescriptionColor(fallbackColor);
+        currentPoint = {
+          markerColor: normalizedBaseColor,
+          baseColor: normalizedBaseColor,
+          lines: [normalizedLine]
+        };
+      } else {
+        currentPoint.lines.push(normalizedLine);
+      }
+      return;
+    }
+
+    if (currentPoint) {
+      currentPoint.lines.push([]);
+    }
+  });
+
+  commitPoint();
+  return points;
+}
+
+// 将同色的连续字符合并为 span，保证局部字色在预览里连续显示。
+function renderDescriptionLineTokens(tokens: DescriptionCharToken[], fallbackColor: string, keyPrefix: string): React.ReactNode {
+  if (tokens.length === 0) return null;
+
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  const segments: Array<{ text: string; color?: string }> = [];
+
+  tokens.forEach(token => {
+    const normalizedColor = token.color && normalizeDescriptionColor(token.color) !== normalizedFallbackColor
+      ? normalizeDescriptionColor(token.color)
+      : undefined;
+    const lastSegment = segments[segments.length - 1];
+
+    if (lastSegment && lastSegment.color === normalizedColor) {
+      lastSegment.text += token.char;
+      return;
+    }
+
+    segments.push({
+      text: token.char,
+      color: normalizedColor
+    });
+  });
+
+  return segments.map((segment, index) => (
+    <span
+      key={`${keyPrefix}-${index}`}
+      style={segment.color ? { color: segment.color } : undefined}
+    >
+      {segment.text}
+    </span>
+  ));
+}
+
 interface DocumentPreviewProps {
   template: TemplateDefinition;
   textValues: Record<string, string>;
@@ -53,33 +344,129 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     return 'preview-images-grid layout-standard';
   };
 
+  // 将多行项目符号文本拆成独立要点，兼容编辑器中的“· ”前缀。
+  const splitBulletLines = (value?: string) => {
+    if (!value) return [];
+
+    const points: string[] = [];
+    let currentLines: string[] = [];
+
+    const commitPoint = () => {
+      const normalizedPoint = currentLines.join('\n').trim();
+      if (normalizedPoint) {
+        points.push(normalizedPoint);
+      }
+      currentLines = [];
+    };
+
+    value
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .forEach(line => {
+        if (/^[·•●▪◦‣\-]\s*/.test(line)) {
+          if (currentLines.length > 0) {
+            commitPoint();
+          }
+          currentLines = [line.replace(/^[·•●▪◦‣\-]\s*/, '').trim()];
+          return;
+        }
+
+        if (!line.trim()) {
+          if (currentLines.length > 0) {
+            currentLines.push('');
+          }
+          return;
+        }
+
+        if (currentLines.length === 0) {
+          currentLines = [line.trim()];
+        } else {
+          currentLines.push(line.trim());
+        }
+      });
+
+    if (currentLines.length > 0) {
+      commitPoint();
+    }
+
+    return points;
+  };
+
   // 渲染要点列表（bullet point 样式）
-  // 同时支持整体印象模块（extra-impression-*）和自定义描述容器（extra-desc-{moduleId}-*）
+  // 同时支持整体印象模块（extra-impression-*）和自定义描述容器（extra-desc-{moduleId}-*）。
   const renderBulletPoints = (fields: ReturnType<typeof getFieldsForModule>, moduleId: string) => {
-    // 收集模板中定义的字段值（使用公共函数过滤）
-    const points = filterVisibleFields(fields)
-      .map(field => textValues[field.id])
-      .filter(Boolean);
-    
-    // 根据模块类型收集动态添加的条目
+    const visibleFields = filterVisibleFields(fields);
+    const primaryField = visibleFields[0];
+    const fallbackColor = primaryField
+      ? normalizeDescriptionColor(textValues[getDescriptionColorFieldId(primaryField.id)])
+      : DEFAULT_DESCRIPTION_TEXT_COLOR;
+
+    // 先收集模板中定义的字段值，富文本描述按字符颜色拆分；普通纯文本字段仍按原 bullet 逻辑处理。
+    const points = visibleFields.flatMap(field => {
+      const fieldValue = textValues[field.id];
+      if (!fieldValue) return [];
+
+      if (isDescriptionRichHtml(fieldValue)) {
+        return extractDescriptionPreviewPoints(fieldValue, normalizeDescriptionColor(textValues[getDescriptionColorFieldId(field.id)]));
+      }
+
+      return splitBulletLines(fieldValue).map(point => ({
+        markerColor: fallbackColor,
+        baseColor: fallbackColor,
+        lines: [[{ char: point, color: undefined }]]
+      }));
+    });
+
+    // 根据模块类型收集动态添加的条目。
     const extraPrefix = moduleId === 'overall' ? 'extra-impression-' : `extra-desc-${moduleId}-`;
     const extraPoints = Object.keys(textValues)
       .filter(key => key.startsWith(extraPrefix))
-      .map(key => textValues[key])
-      .filter(Boolean);
+      .flatMap(key => {
+        const fieldValue = textValues[key];
+        if (!fieldValue) return [];
 
-    const allPoints = [...points, ...extraPoints];
+        if (isDescriptionRichHtml(fieldValue)) {
+          return extractDescriptionPreviewPoints(fieldValue, normalizeDescriptionColor(textValues[getDescriptionColorFieldId(key)]));
+        }
+
+        return splitBulletLines(fieldValue).map(point => ({
+          markerColor: fallbackColor,
+          baseColor: fallbackColor,
+          lines: [[{ char: point, color: undefined }]]
+        }));
+      });
+
+    const allPoints = [...points, ...extraPoints].filter(point =>
+      point.lines.some(line => getDescriptionLineText(line).trim())
+    );
 
     if (allPoints.length === 0) return null;
 
     return (
       <div className="preview-overall-panel">
         <ul className="preview-overall-list">
-          {allPoints.map((point, index) => (
-            <li key={`${point}-${index}`} className="preview-overall-item">
-              <span className="preview-overall-text">• {point}</span>
-            </li>
-          ))}
+          {allPoints.map((point, index) => {
+            const markerColor = point.markerColor || fallbackColor;
+            const baseColor = point.baseColor || markerColor;
+
+            return (
+              <li key={`${moduleId}-${index}`} className="preview-overall-item">
+                <span className="preview-overall-bullet" style={{ color: markerColor }}>•</span>
+                <span className="preview-overall-text" style={{ color: baseColor }}>
+                  {point.lines.map((lineTokens, lineIndex) => (
+                    <React.Fragment key={`${moduleId}-${index}-line-${lineIndex}`}>
+                      {lineIndex > 0 && <br />}
+                      {renderDescriptionLineTokens(
+                        lineTokens,
+                        baseColor,
+                        `${moduleId}-${index}-segment-${lineIndex}`
+                      )}
+                    </React.Fragment>
+                  ))}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </div>
     );
@@ -292,8 +679,14 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const visibleModules = skill.modules.filter(module => {
     const fields = getFieldsForModule(module.id);
     const images = getImagesForModule(module.id);
-    // 检查模板字段有值
-    const hasFieldValues = fields.some(field => Boolean(textValues[field.id]));
+    // 检查模板字段有值，富文本描述按还原后的纯文本判断。
+    const hasFieldValues = fields.some(field => {
+      const fieldValue = textValues[field.id];
+      if (!fieldValue) return false;
+      return isDescriptionRichHtml(fieldValue)
+        ? Boolean(descriptionHtmlToPlainText(fieldValue).trim())
+        : splitBulletLines(fieldValue).length > 0;
+    });
     // 检查图片有值
     const hasImages = images.length > 0;
     // 对于overall模块，检查动态添加的extra-impression-*条目
