@@ -107,11 +107,19 @@ const OtpInput = forwardRef<OtpInputHandle, OtpInputProps>(({ onComplete, disabl
     focusInput(nextIndex);
   }, [focusInput]);
 
-  /** 当 6 位全部填入时自动触发 onComplete */
+  /** 当 6 位全部填入时自动触发 onComplete（用 ref 防止重复触发） */
+  const completedRef = useRef(false);
+
   useEffect(() => {
     const code = digits.join('');
-    if (code.length === OTP_LENGTH && digits.every(d => d !== '')) {
+    const allFilled = code.length === OTP_LENGTH && digits.every(d => d !== '');
+    if (allFilled && !completedRef.current) {
+      completedRef.current = true; // 标记已触发，防止重复调用
       onComplete(code);
+    }
+    // 任一位为空时重置标记（如 clear() 后重新输入）
+    if (!allFilled) {
+      completedRef.current = false;
     }
   }, [digits, onComplete]);
 

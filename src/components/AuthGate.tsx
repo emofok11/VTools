@@ -83,9 +83,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false); // 同步锁，防止快速双击穿透 useState 异步更新
 
   // OTP 验证状态
   const [otpVerifying, setOtpVerifying] = useState(false);    // 验证码验证中
+  const otpVerifyingRef = useRef(false); // 同步锁，防止 OTP 验证重复提交
   const [resendCooldown, setResendCooldown] = useState(0);     // 重发冷却倒计时（秒）
   const otpInputRef = useRef<OtpInputHandle>(null); // OTP 输入框引用
 
@@ -140,12 +142,16 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // 同步锁：防止快速双击穿透 useState 异步更新
+    if (submittingRef.current) return;
+
     const validationError = validate();
     if (validationError) {
       setError(validationError);
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError('');
 
@@ -192,13 +198,18 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     } catch {
       setError('操作失败，请检查网络后重试');
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [email, password, mode, validate, showSuccess, resendVerification, enterOtpStep]);
 
   /** OTP 验证码输入完成回调（6位全部填入后自动触发） */
   const handleOtpComplete = useCallback(async (code: string) => {
+    // 同步锁：防止重复触发验证请求
+    if (otpVerifyingRef.current) return;
+    otpVerifyingRef.current = true;
     setOtpVerifying(true);
+
     const success = await verifyOtp(email.trim(), code);
     if (success) {
       // 验证成功，onAuthStateChange 会更新 user 状态，自动跳转
@@ -206,6 +217,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       // 验证失败，清空输入框
       otpInputRef.current?.clear();
     }
+
+    otpVerifyingRef.current = false;
     setOtpVerifying(false);
   }, [email, verifyOtp]);
 
