@@ -71,7 +71,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const {
     user, loading, sessionExpired, networkError,
     clearSessionExpired, retrySessionRecovery,
-    verifyOtp, resendOtp, resendVerification,
+    verifyOtp, resendOtp,
   } = useAuth();
   const { showSuccess, showError } = useToast();
 
@@ -84,11 +84,15 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false); // 同步锁，防止快速双击穿透 useState 异步更新
+  const lastSubmitTimeRef = useRef(0); // 上次提交时间戳，用于客户端冷却
+  const SUBMIT_COOLDOWN_MS = 30_000; // 提交冷却期：30秒（防止频繁触发429）
+  const RATE_LIMIT_COOLDOWN_MS = 60_000; // 429后的冷却期：60秒
 
   // OTP 验证状态
   const [otpVerifying, setOtpVerifying] = useState(false);    // 验证码验证中
   const otpVerifyingRef = useRef(false); // 同步锁，防止 OTP 验证重复提交
   const [resendCooldown, setResendCooldown] = useState(0);     // 重发冷却倒计时（秒）
+  const [submitCooldown, setSubmitCooldown] = useState(0);     // 提交冷却倒计时（秒，429后显示）
   const otpInputRef = useRef<OtpInputHandle>(null); // OTP 输入框引用
 
   /** 切换登录/注册模式 */
@@ -138,12 +142,29 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     return () => clearTimeout(timer);
   }, [resendCooldown]);
 
+  /** 提交冷却倒计时（429后显示，防止用户反复重试） */
+  React.useEffect(() => {
+    if (submitCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setSubmitCooldown(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [submitCooldown]);
+
   /** 提交表单：登录或注册 */
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
     // 同步锁：防止快速双击穿透 useState 异步更新
     if (submittingRef.current) return;
+
+    // 客户端冷却检查：防止短时间内重复提交触发429
+    const now = Date.now();
+    if (now - lastSubmitTimeRef.current < SUBMIT_COOLDOWN_MS) {
+      const remainSec = Math.ceil((SUBMIT_COOLDOWN_MS - (now - lastSubmitTimeRef.current)) / 1000);
+      setError(`操作过于频繁，请 ${remainSec} 秒后再试`);
+      return;
+    }
 
     const validationError = validate();
     if (validationError) {
@@ -154,6 +175,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     submittingRef.current = true;
     setSubmitting(true);
     setError('');
+    lastSubmitTimeRef.current = Date.now(); // 记录提交时间
 
     try {
       if (mode === 'login') {
@@ -164,15 +186,16 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         });
         if (authError) {
           const translated = translateError(authError.message, 'login');
-          // 检测"邮箱未验证"错误 → 引导至验证码步骤
-          if (translated === 'ACCOUNT_NOT_CONFIRMED') {
-            setError('账号未验证，请先验证邮箱');
-            // 自动发送验证码并跳转到 OTP 界面
-            const sent = await resendVerification(email.trim());
-            if (sent) {
-              showSuccess('验证码已发送至您的邮箱');
-              enterOtpStep();
-            }
+          // 检测429频率限制 → 启动冷却倒计时
+          if (authError.message.includes('rate limit') || authError.message.includes('too many requests') || authError.status === 429) {
+            setError('操作过于频繁，请稍后再试');
+            setSubmitCooldown(60); // 429后强制冷却60秒
+          }
+          // 检测"邮箱未验证"错误 → 引导至验证码步骤（不再自动resend，避免额外请求触发429）
+          else if (translated === 'ACCOUNT_NOT_CONFIRMED') {
+            setError('账号未验证，即将跳转到验证页面...');
+            // 直接跳转OTP步骤，由用户手动点击"重新发送"来获取验证码
+            enterOtpStep();
           } else {
             setError(translated);
           }
@@ -187,7 +210,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
           password,
         });
         if (authError) {
-          setError(translateError(authError.message, 'register'));
+          // 检测429频率限制 → 启动冷却倒计时
+          if (authError.message.includes('rate limit') || authError.message.includes('too many requests') || authError.status === 429) {
+            setError('操作过于频繁，请稍后再试');
+            setSubmitCooldown(60);
+          } else {
+            setError(translateError(authError.message, 'register'));
+          }
         } else if (!data.session) {
           // 注册成功，需邮箱确认 → 进入 OTP 验证步骤
           showSuccess('注册成功，验证码已发送至您的邮箱');
@@ -201,7 +230,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [email, password, mode, validate, showSuccess, resendVerification, enterOtpStep]);
+  }, [email, password, mode, validate, showSuccess, enterOtpStep]);
 
   /** OTP 验证码输入完成回调（6位全部填入后自动触发） */
   const handleOtpComplete = useCallback(async (code: string) => {
@@ -210,9 +239,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     otpVerifyingRef.current = true;
     setOtpVerifying(true);
 
-    const success = await verifyOtp(email.trim(), code);
-    if (success) {
+    const result = await verifyOtp(email.trim(), code);
+    if (result.success) {
       // 验证成功，onAuthStateChange 会更新 user 状态，自动跳转
+    } else if (result.rateLimited) {
+      // 429频率限制 → 启动冷却倒计时，清空输入框
+      setSubmitCooldown(60);
+      otpInputRef.current?.clear();
     } else {
       // 验证失败，清空输入框
       otpInputRef.current?.clear();
@@ -225,9 +258,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   /** 重新发送验证码 */
   const handleResend = useCallback(async () => {
     if (resendCooldown > 0) return;
-    const success = await resendOtp(email.trim());
-    if (success) {
+    const result = await resendOtp(email.trim());
+    if (result.success) {
       setResendCooldown(60); // 重新开始 60 秒冷却
+    } else if (result.rateLimited) {
+      // 429频率限制 → 启动冷却倒计时，防止用户反复重试
+      setResendCooldown(60);
     }
   }, [email, resendCooldown, resendOtp]);
 
@@ -322,11 +358,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
               <button
                 className="auth-gate-btn"
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || submitCooldown > 0}
               >
-                {submitting
-                  ? (mode === 'login' ? '登录中...' : '注册中...')
-                  : (mode === 'login' ? '登录' : '注册')
+                {submitCooldown > 0
+                  ? `请稍候 (${submitCooldown}s)`
+                  : submitting
+                    ? (mode === 'login' ? '登录中...' : '注册中...')
+                    : (mode === 'login' ? '登录' : '注册')
                 }
               </button>
             </form>

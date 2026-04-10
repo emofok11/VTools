@@ -6,6 +6,12 @@ import { useToast, default as Toast } from '../components/Toast';
 /**
  * 认证上下文类型定义
  */
+/** 认证操作结果（支持429频率限制标记） */
+export interface AuthResult {
+  success: boolean;        // 操作是否成功
+  rateLimited?: boolean;   // 是否触发了429频率限制
+}
+
 interface AuthContextType {
   user: User | null;                           // 当前登录用户
   session: Session | null;                     // 当前会话
@@ -15,9 +21,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;                // 登出方法
   clearSessionExpired: () => void;             // 清除过期提示
   retrySessionRecovery: () => void;            // 重试会话恢复
-  verifyOtp: (email: string, token: string) => Promise<boolean>;  // 验证 OTP 验证码
-  resendOtp: (email: string) => Promise<boolean>;                 // 重新发送验证码
-  resendVerification: (email: string) => Promise<boolean>;        // 登录时为未验证账号发送验证码
+  verifyOtp: (email: string, token: string) => Promise<AuthResult>;  // 验证 OTP 验证码
+  resendOtp: (email: string) => Promise<AuthResult>;                 // 重新发送验证码
+  resendVerification: (email: string) => Promise<AuthResult>;        // 登录时为未验证账号发送验证码
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -126,9 +132,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /**
    * 验证 OTP 验证码
-   * @returns 验证是否成功
+   * @returns AuthResult（包含是否触发429频率限制标记）
    */
-  const verifyOtp = useCallback(async (email: string, token: string): Promise<boolean> => {
+  const verifyOtp = useCallback(async (email: string, token: string): Promise<AuthResult> => {
     try {
       const { error } = await supabase.auth.verifyOtp({
         type: 'signup',
@@ -136,58 +142,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
       });
       if (error) {
+        // 检测429频率限制
+        const isRateLimited = error.status === 429 ||
+          error.message.includes('rate limit') ||
+          error.message.includes('too many requests');
+        if (isRateLimited) {
+          showError('操作过于频繁，请稍后再试');
+          return { success: false, rateLimited: true };
+        }
         showError('验证码错误或已过期，请重新发送');
-        return false;
+        return { success: false };
       }
       showSuccess('验证成功，正在登录...');
-      return true;
+      return { success: true };
     } catch {
       showError('验证失败，请稍后重试');
-      return false;
+      return { success: false };
     }
   }, [showSuccess, showError]);
 
   /**
    * 重新发送注册验证码
-   * @returns 发送是否成功
+   * @returns AuthResult（包含是否触发429频率限制标记）
    */
-  const resendOtp = useCallback(async (email: string): Promise<boolean> => {
+  const resendOtp = useCallback(async (email: string): Promise<AuthResult> => {
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
       });
       if (error) {
+        // 检测429频率限制
+        const isRateLimited = error.status === 429 ||
+          error.message.includes('rate limit') ||
+          error.message.includes('too many requests');
+        if (isRateLimited) {
+          showError('发送过于频繁，请稍后再试');
+          return { success: false, rateLimited: true };
+        }
         showError('发送失败，请稍后重试');
-        return false;
+        return { success: false };
       }
       showSuccess('验证码已重新发送');
-      return true;
+      return { success: true };
     } catch {
       showError('发送失败，请稍后重试');
-      return false;
+      return { success: false };
     }
   }, [showSuccess, showError]);
 
   /**
    * 为未验证账号发送验证码（登录时检测到 Email not confirmed 场景）
-   * @returns 发送是否成功
+   * @returns AuthResult（包含是否触发429频率限制标记）
    */
-  const resendVerification = useCallback(async (email: string): Promise<boolean> => {
+  const resendVerification = useCallback(async (email: string): Promise<AuthResult> => {
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
       });
       if (error) {
+        // 检测429频率限制
+        const isRateLimited = error.status === 429 ||
+          error.message.includes('rate limit') ||
+          error.message.includes('too many requests');
+        if (isRateLimited) {
+          showError('发送过于频繁，请稍后再试');
+          return { success: false, rateLimited: true };
+        }
         showError('发送失败，请稍后重试');
-        return false;
+        return { success: false };
       }
       showSuccess('验证码已发送至您的邮箱');
-      return true;
+      return { success: true };
     } catch {
       showError('发送失败，请稍后重试');
-      return false;
+      return { success: false };
     }
   }, [showSuccess, showError]);
 
