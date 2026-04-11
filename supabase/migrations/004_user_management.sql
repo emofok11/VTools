@@ -7,6 +7,12 @@
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 
+-- 添加 CHECK 约束：role 只能是合法枚举值，防止手动输入非法角色
+ALTER TABLE public.profiles
+  DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE public.profiles
+  ADD CONSTRAINT profiles_role_check CHECK (role IN ('super_admin', 'admin', 'user'));
+
 -- 2. profiles 表增加 banned 字段（封禁标记 + 时间）
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;
