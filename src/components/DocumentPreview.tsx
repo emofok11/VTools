@@ -309,7 +309,6 @@ function renderDescriptionRichText(value: string | undefined, fallbackColor: str
   let currentText = '';
   let currentColor: string | undefined;
   let segmentIndex = 0;
-  let afterNewline = true; // 追踪是否处于换行后的行首位置
 
   const flushSegment = () => {
     if (!currentText) return;
@@ -332,7 +331,6 @@ function renderDescriptionRichText(value: string | undefined, fallbackColor: str
       flushSegment();
       nodes.push(<br key={`${keyPrefix}-break-${index}`} />);
       currentColor = undefined;
-      afterNewline = true;
       return;
     }
 
@@ -345,14 +343,7 @@ function renderDescriptionRichText(value: string | undefined, fallbackColor: str
       currentColor = normalizedColor;
     }
 
-    // 换行后的前导空格用 \u00A0 渲染，避免 HTML 连续空格折叠导致续行不对齐
-    if (afterNewline && token.char === ' ') {
-      currentText += '\u00A0';
-    } else {
-      currentText += token.char;
-    }
-
-    afterNewline = false;
+    currentText += token.char;
   });
 
   flushSegment();
