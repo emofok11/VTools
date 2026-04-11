@@ -1,9 +1,9 @@
 -- ============================================
--- 用户管理功能：role / banned 字段 + 管理员 RLS 策略
+-- 用户管理功能：super_admin / admin / user 角色体系 + 管理员 RLS 策略
 -- 需在 Supabase Dashboard → SQL Editor 中执行
 -- ============================================
 
--- 1. profiles 表增加 role 字段（admin / user）
+-- 1. profiles 表增加 role 字段（super_admin / admin / user）
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 
@@ -20,15 +20,32 @@ ALTER TABLE public.profiles
 -- 3. 删除旧的宽松 SELECT 策略，替换为管理员可查全部 + 普通用户只能查自己
 DROP POLICY IF EXISTS "profiles_select_authenticated" ON public.profiles;
 
--- 创建 SECURITY DEFINER 辅助函数，绕过 RLS 递归查询
--- 直接用 superuser 权限检查 role，避免 RUSING 子查询自身被 RLS 拦截
+-- 创建 SECURITY DEFINER 辅助函数：判断是否为管理员（含超级管理员）
+-- 超级管理员和管理员都能查看所有用户
 CREATE OR REPLACE FUNCTION public.is_admin(check_uid UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
 AS $$
-  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = check_uid AND role = 'admin');
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = check_uid AND role IN ('super_admin', 'admin')
+  );
+$$;
+
+-- 创建 SECURITY DEFINER 辅助函数：判断是否为超级管理员
+-- 仅超级管理员可变更角色
+CREATE OR REPLACE FUNCTION public.is_super_admin(check_uid UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = check_uid AND role = 'super_admin'
+  );
 $$;
 
 -- 普通用户只能查自己的 profile
@@ -38,14 +55,15 @@ CREATE POLICY "profiles_select_own"
   TO authenticated
   USING (auth.uid() = id);
 
--- 管理员可查所有 profile（通过 SECURITY DEFINER 函数避免递归）
+-- 管理员（含超级管理员）可查所有 profile
 DROP POLICY IF EXISTS "profiles_select_admin" ON public.profiles;
 CREATE POLICY "profiles_select_admin"
   ON public.profiles FOR SELECT
   TO authenticated
   USING (public.is_admin(auth.uid()));
 
--- 4. 管理员可更新任意 profile（封禁/解封/改名/角色变更）
+-- 4. 管理员（含超级管理员）可更新任意 profile（封禁/解封/改名）
+-- 注意：角色变更操作由前端+RLS双重限制，仅超级管理员可变更角色
 DROP POLICY IF EXISTS "profiles_update_admin" ON public.profiles;
 CREATE POLICY "profiles_update_admin"
   ON public.profiles FOR UPDATE
@@ -53,7 +71,20 @@ CREATE POLICY "profiles_update_admin"
   USING (public.is_admin(auth.uid()))
   WITH CHECK (public.is_admin(auth.uid()));
 
--- 5. 管理员可删除任意 profile
+-- 角色字段更新：仅超级管理员可以修改其他用户的 role 字段
+-- 通过额外的 RLS 策略限制：非超级管理员不能将 role 设为非原值
+DROP POLICY IF EXISTS "profiles_update_role_super_admin_only" ON public.profiles;
+CREATE POLICY "profiles_update_role_super_admin_only"
+  ON public.profiles FOR UPDATE
+  TO authenticated
+  USING (public.is_super_admin(auth.uid()) OR auth.uid() = id)
+  -- 超级管理员可以改任何人的 role，非超级管理员只能改自己且不能改 role
+  WITH CHECK (
+    public.is_super_admin(auth.uid())
+    OR (auth.uid() = id AND role = (SELECT role FROM public.profiles WHERE id = auth.uid()))
+  );
+
+-- 5. 管理员（含超级管理员）可删除任意 profile
 DROP POLICY IF EXISTS "profiles_delete_admin" ON public.profiles;
 CREATE POLICY "profiles_delete_admin"
   ON public.profiles FOR DELETE

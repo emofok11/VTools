@@ -10,6 +10,7 @@ import {
   deleteUserProfile,
   type ProfileData,
   type UserRole,
+  ROLE_LABELS,
 } from '../lib/profileService';
 import './UserManagement.css';
 
@@ -25,7 +26,7 @@ interface ModalState {
 }
 
 const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isSuperAdmin } = useAuth();
   const { showSuccess, showError } = useToast();
 
   const [users, setUsers] = useState<ProfileData[]>([]);
@@ -37,6 +38,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
   const [modalInput, setModalInput] = useState('');
   const [modalError, setModalError] = useState('');
   const [modalSaving, setModalSaving] = useState(false);
+  // 角色变更弹窗：选择目标角色
+  const [selectedRole, setSelectedRole] = useState<UserRole>('user');
 
   // 加载用户列表
   const loadUsers = useCallback(async () => {
@@ -62,11 +65,15 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
 
   // 统计
   const totalCount = users.length;
+  const superAdminCount = users.filter((u) => u.role === 'super_admin').length;
   const adminCount = users.filter((u) => u.role === 'admin').length;
   const bannedCount = users.filter((u) => u.banned).length;
 
   // 判断是否为自身
   const isSelf = (userId: string) => userId === currentUser?.id;
+
+  // 判断目标用户是否为管理员或超级管理员
+  const isTargetAdmin = (u: ProfileData) => u.role === 'admin' || u.role === 'super_admin';
 
   // ===== 弹窗操作 =====
   const openModal = (type: ModalType, user: ProfileData) => {
@@ -74,6 +81,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
     setModalInput(type === 'edit-username' ? user.username : '');
     setModalError('');
     setModalSaving(false);
+    if (type === 'role') {
+      // 默认选择当前角色的反向：管理员→普通用户，普通用户→管理员
+      setSelectedRole(user.role === 'admin' ? 'user' : user.role === 'user' ? 'admin' : 'user');
+    }
   };
 
   const closeModal = () => {
@@ -102,7 +113,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
     }
   };
 
-  // 封禁用户
+  // 封禁用户（仅可封禁普通用户）
   const handleBan = async () => {
     if (!modal.user) return;
     setModalSaving(true);
@@ -128,15 +139,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
     }
   };
 
-  // 修改角色
+  // 修改角色（仅超级管理员可用）
   const handleChangeRole = async () => {
     if (!modal.user) return;
     setModalSaving(true);
-    const newRole: UserRole = modal.user.role === 'admin' ? 'user' : 'admin';
-    const ok = await changeUserRole(modal.user.id, newRole);
+    const ok = await changeUserRole(modal.user.id, selectedRole);
     setModalSaving(false);
     if (ok) {
-      showSuccess(`角色已变更为 ${newRole === 'admin' ? '管理员' : '普通用户'}`);
+      showSuccess(`角色已变更为${ROLE_LABELS[selectedRole]}`);
       closeModal();
       loadUsers();
     } else {
@@ -163,6 +173,15 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  // 角色标签样式映射
+  const getRoleTagClass = (role: UserRole) => {
+    switch (role) {
+      case 'super_admin': return 'super-admin';
+      case 'admin': return 'admin';
+      default: return 'user';
+    }
   };
 
   // 渲染弹窗
@@ -201,7 +220,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
             <>
               <h3 className="um-modal-title">封禁用户</h3>
               <div className="um-modal-field">
-                <div className="um-modal-label">用户：{u.username}</div>
+                <div className="um-modal-label">用户：{u.username}（{ROLE_LABELS[u.role]}）</div>
                 <input
                   className="um-modal-input"
                   value={modalInput}
@@ -225,15 +244,27 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
               <h3 className="um-modal-title">变更角色</h3>
               <div className="um-modal-field">
                 <div className="um-modal-label">
-                  用户：{u.username}，当前角色：{u.role === 'admin' ? '管理员' : '普通用户'}
+                  用户：{u.username}，当前角色：{ROLE_LABELS[u.role]}
                 </div>
-                <div className="um-modal-label">
-                  将变更为：{u.role === 'admin' ? '普通用户' : '管理员'}
+                <div className="um-role-select-group">
+                  {(['admin', 'user'] as UserRole[]).map((r) => (
+                    <label key={r} className={`um-role-option ${selectedRole === r ? 'active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="role-select"
+                        value={r}
+                        checked={selectedRole === r}
+                        onChange={() => setSelectedRole(r)}
+                        disabled={modalSaving}
+                      />
+                      <span className="um-role-option-label">{ROLE_LABELS[r]}</span>
+                    </label>
+                  ))}
                 </div>
                 {modalError && <div className="um-modal-error">{modalError}</div>}
               </div>
               <div className="um-modal-actions">
-                <button className="btn-primary" onClick={handleChangeRole} disabled={modalSaving}>
+                <button className="btn-primary" onClick={handleChangeRole} disabled={modalSaving || selectedRole === u.role}>
                   {modalSaving ? '变更中...' : '确认变更'}
                 </button>
                 <button className="btn-secondary" onClick={closeModal} disabled={modalSaving}>取消</button>
@@ -246,7 +277,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
               <h3 className="um-modal-title">删除用户</h3>
               <div className="um-modal-field">
                 <div className="um-modal-label">
-                  确定要删除用户 <strong>{u.username}</strong> 吗？此操作不可恢复。
+                  确定要删除用户 <strong>{u.username}</strong>（{ROLE_LABELS[u.role]}）吗？此操作不可恢复。
                 </div>
                 <div className="um-modal-label" style={{ color: 'rgba(255,70,85,0.7)' }}>
                   注意：仅删除 profiles 记录，auth.users 需在 Supabase 后台手动删除。
@@ -290,6 +321,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
             <div className="um-stat-label">总用户</div>
           </div>
           <div className="um-stat-card">
+            <div className="um-stat-value">{superAdminCount}</div>
+            <div className="um-stat-label">超级管理员</div>
+          </div>
+          <div className="um-stat-card">
             <div className="um-stat-value">{adminCount}</div>
             <div className="um-stat-label">管理员</div>
           </div>
@@ -331,7 +366,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                 <tr key={u.id}>
                   <td>
                     <div className="um-username-cell">
-                      <div className="um-user-avatar">
+                      <div className={`um-user-avatar ${getRoleTagClass(u.role)}`}>
                         {u.username.charAt(0).toUpperCase()}
                       </div>
                       <span className="um-user-name">
@@ -344,8 +379,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                     <span className="um-id-text">{u.id.substring(0, 8)}...</span>
                   </td>
                   <td>
-                    <span className={`um-role-tag ${u.role}`}>
-                      {u.role === 'admin' ? '管理员' : '用户'}
+                    <span className={`um-role-tag ${getRoleTagClass(u.role)}`}>
+                      {ROLE_LABELS[u.role]}
                     </span>
                   </td>
                   <td>
@@ -370,25 +405,39 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                         <button
                           className="um-action-btn ban"
                           onClick={() => openModal('ban', u)}
-                          disabled={isSelf(u.id)}
-                          title={isSelf(u.id) ? '不能封禁自己' : ''}
+                          disabled={isSelf(u.id) || isTargetAdmin(u)}
+                          title={
+                            isSelf(u.id)
+                              ? '不能封禁自己'
+                              : isTargetAdmin(u)
+                                ? '管理员不可封禁，请先降级为普通用户'
+                                : ''
+                          }
                         >
                           封禁
                         </button>
                       )}
-                      <button
-                        className="um-action-btn role"
-                        onClick={() => openModal('role', u)}
-                        disabled={isSelf(u.id)}
-                        title={isSelf(u.id) ? '不能修改自己的角色' : ''}
-                      >
-                        角色
-                      </button>
+                      {/* 仅超级管理员可变更角色 */}
+                      {isSuperAdmin && !isSelf(u.id) && u.role !== 'super_admin' && (
+                        <button
+                          className="um-action-btn role"
+                          onClick={() => openModal('role', u)}
+                          title="变更角色"
+                        >
+                          角色
+                        </button>
+                      )}
                       <button
                         className="um-action-btn delete"
                         onClick={() => openModal('delete', u)}
-                        disabled={isSelf(u.id)}
-                        title={isSelf(u.id) ? '不能删除自己' : ''}
+                        disabled={isSelf(u.id) || u.role === 'super_admin'}
+                        title={
+                          isSelf(u.id)
+                            ? '不能删除自己'
+                            : u.role === 'super_admin'
+                              ? '不能删除超级管理员'
+                              : ''
+                        }
                       >
                         删除
                       </button>

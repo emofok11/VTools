@@ -6,7 +6,7 @@ import { supabase } from './supabase';
  */
 
 /** 用户角色类型 */
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'super_admin' | 'admin' | 'user';
 
 /** Profile 完整数据 */
 export interface ProfileData {
@@ -19,6 +19,13 @@ export interface ProfileData {
   last_name_change_at: string | null;
   created_at: string;
 }
+
+/** 角色中文显示名 */
+export const ROLE_LABELS: Record<UserRole, string> = {
+  super_admin: '超级管理员',
+  admin: '管理员',
+  user: '普通用户',
+};
 
 /** 检查用户名是否唯一（未被占用） */
 export async function checkUsernameUnique(username: string): Promise<boolean> {
@@ -104,7 +111,7 @@ export async function getFullProfile(userId: string): Promise<ProfileData | null
   return data as ProfileData | null;
 }
 
-/** 检查当前用户是否为管理员 */
+/** 检查当前用户是否为管理员（含超级管理员） */
 export async function isAdmin(userId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('profiles')
@@ -115,7 +122,21 @@ export async function isAdmin(userId: string): Promise<boolean> {
   if (error || !data) {
     return false;
   }
-  return data.role === 'admin';
+  return data.role === 'admin' || data.role === 'super_admin';
+}
+
+/** 检查当前用户是否为超级管理员 */
+export async function isSuperAdmin(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return false;
+  }
+  return data.role === 'super_admin';
 }
 
 // ============================================
@@ -186,7 +207,7 @@ export async function adminUpdateUsername(userId: string, username: string): Pro
   return true;
 }
 
-/** 修改用户角色（管理员） */
+/** 修改用户角色（仅超级管理员） */
 export async function changeUserRole(userId: string, role: UserRole): Promise<boolean> {
   const { error } = await supabase
     .from('profiles')

@@ -174,6 +174,10 @@
   flex-shrink: 0;
 }
 
+.um-user-avatar.super-admin {
+  background: #FFA500;
+}
+
 .um-user-name {
   color: #ECE8E1;
   letter-spacing: 0.3px;
@@ -193,6 +197,12 @@
   background: rgba(255, 70, 85, 0.15);
   color: #FF4655;
   border: 1px solid rgba(255, 70, 85, 0.3);
+}
+
+.um-role-tag.super-admin {
+  background: rgba(255, 165, 0, 0.15);
+  color: #FFA500;
+  border: 1px solid rgba(255, 165, 0, 0.3);
 }
 
 .um-role-tag.user {
@@ -398,6 +408,45 @@
   font-size: 11px;
   color: rgba(255, 165, 0, 0.7);
   margin-left: 4px;
+}
+
+/* ===== 角色选择器（弹窗内） ===== */
+.um-role-select-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.um-role-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid rgba(236, 232, 225, 0.12);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: rgba(236, 232, 225, 0.03);
+}
+
+.um-role-option:hover {
+  border-color: rgba(236, 232, 225, 0.25);
+  background: rgba(236, 232, 225, 0.06);
+}
+
+.um-role-option.active {
+  border-color: #FF4655;
+  background: rgba(255, 70, 85, 0.08);
+}
+
+.um-role-option input[type="radio"] {
+  accent-color: #FF4655;
+}
+
+.um-role-option-label {
+  font-size: 13px;
+  color: #ECE8E1;
+  letter-spacing: 0.3px;
 }
 
 /* ===== 响应式 ===== */

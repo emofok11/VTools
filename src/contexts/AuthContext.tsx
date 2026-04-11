@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { getAuthEmailRedirectUrl } from '../lib/supabaseConfig';
-import { isAdmin as checkIsAdmin } from '../lib/profileService';
+import { isAdmin as checkIsAdmin, isSuperAdmin as checkIsSuperAdmin } from '../lib/profileService';
 import type { User, Session } from '@supabase/supabase-js';
 import { useToast, default as Toast } from '../components/Toast';
 
@@ -20,7 +20,8 @@ interface AuthContextType {
   loading: boolean;                            // 初始化加载状态
   sessionExpired: boolean;                     // 会话是否过期（用于提示用户）
   networkError: boolean;                       // 网络是否异常（用于显示重试按钮）
-  isAdmin: boolean;                            // 当前用户是否为管理员
+  isAdmin: boolean;                            // 当前用户是否为管理员（含超级管理员）
+  isSuperAdmin: boolean;                       // 当前用户是否为超级管理员
   signOut: () => Promise<void>;                // 登出方法
   refreshSession: () => Promise<void>;         // 刷新会话（更新user_metadata等）
   clearSessionExpired: () => void;             // 清除过期提示
@@ -45,6 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [networkError, setNetworkError] = useState(false); // 网络异常标记
   const [adminLoading, setAdminLoading] = useState(true);  // 管理员状态加载中
   const [isAdminState, setIsAdminState] = useState(false); // 管理员标记
+  const [isSuperAdminState, setIsSuperAdminState] = useState(false); // 超级管理员标记
   const { toast, showSuccess, showError, dismiss } = useToast();
   const initSessionRef = useRef<() => void>(); // 保存初始化函数引用，供重试调用
   const authEmailRedirectUrl = getAuthEmailRedirectUrl();
@@ -69,14 +71,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (currentSession?.user) {
         setAdminLoading(true);
         try {
-          const admin = await checkIsAdmin(currentSession.user.id);
+          const [admin, superAdmin] = await Promise.all([
+            checkIsAdmin(currentSession.user.id),
+            checkIsSuperAdmin(currentSession.user.id),
+          ]);
           setIsAdminState(admin);
+          setIsSuperAdminState(superAdmin);
         } catch {
           setIsAdminState(false);
+          setIsSuperAdminState(false);
         }
         setAdminLoading(false);
       } else {
         setIsAdminState(false);
+        setIsSuperAdminState(false);
         setAdminLoading(false);
       }
     } catch (error) {
@@ -108,16 +116,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 同步管理员状态（失败时静默处理，3秒超时保护）
         if (newSession?.user) {
           try {
-            const admin = await Promise.race([
-              checkIsAdmin(newSession.user.id),
-              new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+            const [admin, superAdmin] = await Promise.race([
+              Promise.all([
+                checkIsAdmin(newSession.user.id),
+                checkIsSuperAdmin(newSession.user.id),
+              ]),
+              new Promise<[boolean, boolean]>((resolve) => setTimeout(() => resolve([false, false]), 3000)),
             ]);
             setIsAdminState(admin);
+            setIsSuperAdminState(superAdmin);
           } catch {
             setIsAdminState(false);
+            setIsSuperAdminState(false);
           }
         } else {
           setIsAdminState(false);
+          setIsSuperAdminState(false);
         }
 
         // Token 刷新失败 → 会话过期
@@ -227,7 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{
-      user, session, loading, sessionExpired, networkError, isAdmin: isAdminState,
+      user, session, loading, sessionExpired, networkError, isAdmin: isAdminState, isSuperAdmin: isSuperAdminState,
       signOut, refreshSession, clearSessionExpired, retrySessionRecovery,
       resendVerification,
     }}>
