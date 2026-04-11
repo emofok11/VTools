@@ -97,7 +97,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false); // 同步锁，防止快速双击穿透 useState 异步更新
   const lastSubmitTimeRef = useRef(0); // 上次提交时间戳，用于客户端冷却
-  const SUBMIT_COOLDOWN_MS = 30_000; // 提交冷却期：30秒（防止频繁触发429）
+  const SUBMIT_COOLDOWN_MS = 3_000; // 提交冷却期：3秒（仅防快速双击，429由服务端判定）
   const RATE_LIMIT_COOLDOWN_MS = 60_000; // 429后的冷却期：60秒
 
   // 未验证账号状态（登录时检测到邮箱未确认）
@@ -116,6 +116,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     setUsername('');
     setUsernameError('');
     setUnconfirmedEmail('');
+    setSubmitCooldown(0); // 切换模式时清除429冷却
+    lastSubmitTimeRef.current = 0; // 重置提交时间，允许立即操作
   }, []);
 
   /** 清除未验证提示，返回正常登录状态 */
