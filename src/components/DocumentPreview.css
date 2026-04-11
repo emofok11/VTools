@@ -399,6 +399,16 @@
   word-break: break-word;
 }
 
+/* 正文内容（无项目符号），去掉 bullet 占位。 */
+.preview-overall-plain {
+  padding-left: 0;
+}
+
+.preview-overall-plain .preview-overall-text {
+  flex: 1;
+  padding-left: 0;
+}
+
 /* =============================================
    文字字段卡片（描述类）
    ============================================= */

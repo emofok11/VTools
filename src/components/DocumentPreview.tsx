@@ -69,6 +69,7 @@ interface DescriptionPreviewPoint {
   lines: DescriptionCharToken[][];
   markerColor?: string;
   baseColor?: string;
+  isBullet?: boolean;
 }
 
 // 将富文本 HTML 还原为纯文本，便于做内容存在性判断和兼容旧逻辑。
@@ -237,7 +238,8 @@ function extractDescriptionPreviewPoints(value?: string, fallbackColor?: string)
         markerColor,
         // 续行应回落到字段默认色，不能跟着首行或项目符号颜色一起继承。
         baseColor: normalizeDescriptionColor(fallbackColor),
-        lines: [trimDescriptionLineTokens(lineTokens.slice(bulletMatch[0].length))]
+        lines: [trimDescriptionLineTokens(lineTokens.slice(bulletMatch[0].length))],
+        isBullet: true
       };
       return;
     }
@@ -399,17 +401,24 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     return 'preview-images-grid layout-standard';
   };
 
-  // 将多行项目符号文本拆成独立要点，兼容编辑器中的“· ”前缀。
-  const splitBulletLines = (value?: string) => {
+  // 将多行项目符号文本拆成独立要点，兼容编辑器中的"· "前缀。
+  // 返回值包含 isBullet 标记，只有以项目符号开头的行才标记为 isBullet。
+  const splitBulletLines = (value: string | undefined, fallbackColor: string = DEFAULT_DESCRIPTION_TEXT_COLOR): DescriptionPreviewPoint[] => {
     if (!value) return [];
 
-    const points: string[] = [];
+    const points: DescriptionPreviewPoint[] = [];
     let currentLines: string[] = [];
+    let currentIsBullet = false;
 
     const commitPoint = () => {
       const normalizedPoint = currentLines.join('\n').trim();
       if (normalizedPoint) {
-        points.push(normalizedPoint);
+        points.push({
+          markerColor: fallbackColor,
+          baseColor: fallbackColor,
+          isBullet: currentIsBullet,
+          lines: [[{ char: normalizedPoint, color: undefined }]]
+        });
       }
       currentLines = [];
     };
@@ -422,6 +431,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           if (currentLines.length > 0) {
             commitPoint();
           }
+          currentIsBullet = true;
           currentLines = [line.replace(/^[·•●▪◦‣\-]\s*/, '').trim()];
           return;
         }
@@ -434,6 +444,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         }
 
         if (currentLines.length === 0) {
+          currentIsBullet = false;
           currentLines = [line.trim()];
         } else {
           currentLines.push(line.trim());
@@ -446,7 +457,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
 
     return points;
   };
-
   // 渲染要点列表（bullet point 样式）
   // 同时支持整体印象模块（extra-impression-*）和自定义描述容器（extra-desc-{moduleId}-*）。
   const renderBulletPoints = (fields: ReturnType<typeof getFieldsForModule>, moduleId: string) => {
@@ -465,11 +475,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         return extractDescriptionPreviewPoints(fieldValue, normalizeDescriptionColor(textValues[getDescriptionColorFieldId(field.id)]));
       }
 
-      return splitBulletLines(fieldValue).map(point => ({
-        markerColor: fallbackColor,
-        baseColor: fallbackColor,
-        lines: [[{ char: point, color: undefined }]]
-      }));
+      return splitBulletLines(fieldValue, fallbackColor);
     });
 
     // 根据模块类型收集动态添加的条目。
@@ -484,11 +490,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           return extractDescriptionPreviewPoints(fieldValue, normalizeDescriptionColor(textValues[getDescriptionColorFieldId(key)]));
         }
 
-        return splitBulletLines(fieldValue).map(point => ({
-          markerColor: fallbackColor,
-          baseColor: fallbackColor,
-          lines: [[{ char: point, color: undefined }]]
-        }));
+        return splitBulletLines(fieldValue, fallbackColor);
       });
 
     const allPoints = [...points, ...extraPoints].filter(point =>
@@ -503,21 +505,35 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           {allPoints.map((point, index) => {
             const markerColor = point.markerColor || fallbackColor;
             const baseColor = point.baseColor || markerColor;
+            const isBullet = point.isBullet !== false; // 默认为bullet（兼容旧数据）
+
+            const textContent = point.lines.map((lineTokens, lineIndex) => (
+              <React.Fragment key={`${moduleId}-${index}-line-${lineIndex}`}>
+                {lineIndex > 0 && <br />}
+                {renderDescriptionLineTokens(
+                  lineTokens,
+                  baseColor,
+                  `${moduleId}-${index}-segment-${lineIndex}`
+                )}
+              </React.Fragment>
+            ));
+
+            if (!isBullet) {
+              // 正文内容：不加项目符号
+              return (
+                <li key={`${moduleId}-${index}`} className="preview-overall-item preview-overall-plain">
+                  <span className="preview-overall-text" style={{ color: baseColor }}>
+                    {textContent}
+                  </span>
+                </li>
+              );
+            }
 
             return (
               <li key={`${moduleId}-${index}`} className="preview-overall-item">
                 <span className="preview-overall-bullet" style={{ color: markerColor }}>•</span>
                 <span className="preview-overall-text" style={{ color: baseColor }}>
-                  {point.lines.map((lineTokens, lineIndex) => (
-                    <React.Fragment key={`${moduleId}-${index}-line-${lineIndex}`}>
-                      {lineIndex > 0 && <br />}
-                      {renderDescriptionLineTokens(
-                        lineTokens,
-                        baseColor,
-                        `${moduleId}-${index}-segment-${lineIndex}`
-                      )}
-                    </React.Fragment>
-                  ))}
+                  {textContent}
                 </span>
               </li>
             );
