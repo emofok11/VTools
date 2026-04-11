@@ -505,7 +505,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           {allPoints.map((point, index) => {
             const markerColor = point.markerColor || fallbackColor;
             const baseColor = point.baseColor || markerColor;
-            const isBullet = point.isBullet === true; // 只有明确标记为bullet的点才显示项目符号
+            const isBullet = moduleId === 'overall' || point.isBullet === true; // 整体印象模块恢复旧版：普通要点也显示项目符号
 
             const textContent = point.lines.map((lineTokens, lineIndex) => (
               <React.Fragment key={`${moduleId}-${index}-line-${lineIndex}`}>
