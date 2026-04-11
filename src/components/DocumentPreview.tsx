@@ -295,6 +295,56 @@ function renderDescriptionLineTokens(tokens: DescriptionCharToken[], fallbackCol
   ));
 }
 
+function renderDescriptionRichText(value: string | undefined, fallbackColor: string, keyPrefix: string): React.ReactNode {
+  const tokens = descriptionHtmlToCharTokens(value, fallbackColor);
+  if (tokens.length === 0) return null;
+
+  const normalizedFallbackColor = normalizeDescriptionColor(fallbackColor);
+  const nodes: React.ReactNode[] = [];
+  let currentText = '';
+  let currentColor: string | undefined;
+  let segmentIndex = 0;
+
+  const flushSegment = () => {
+    if (!currentText) return;
+
+    nodes.push(
+      <span
+        key={`${keyPrefix}-segment-${segmentIndex}`}
+        style={currentColor ? { color: currentColor } : undefined}
+      >
+        {currentText}
+      </span>
+    );
+
+    segmentIndex += 1;
+    currentText = '';
+  };
+
+  tokens.forEach((token, index) => {
+    if (token.char === '\n') {
+      flushSegment();
+      nodes.push(<br key={`${keyPrefix}-break-${index}`} />);
+      currentColor = undefined;
+      return;
+    }
+
+    const normalizedColor = token.color && normalizeDescriptionColor(token.color) !== normalizedFallbackColor
+      ? normalizeDescriptionColor(token.color)
+      : undefined;
+
+    if (normalizedColor !== currentColor) {
+      flushSegment();
+      currentColor = normalizedColor;
+    }
+
+    currentText += token.char;
+  });
+
+  flushSegment();
+  return nodes;
+}
+
 interface DocumentPreviewProps {
   template: TemplateDefinition;
   textValues: Record<string, string>;
@@ -468,6 +518,37 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             );
           })}
         </ul>
+      </div>
+    );
+  };
+
+  const renderRichDescriptionModule = (fields: ReturnType<typeof getFieldsForModule>) => {
+    const visibleFields = filterVisibleFields(fields).filter(field => {
+      const fieldValue = textValues[field.id];
+      if (!fieldValue) return false;
+      return Boolean(descriptionHtmlToPlainText(fieldValue).trim());
+    });
+
+    if (visibleFields.length === 0) return null;
+
+    return (
+      <div className="preview-description-rich-list">
+        {visibleFields.map(field => {
+          const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(field.id)]);
+          const richContent = renderDescriptionRichText(textValues[field.id], fallbackColor, field.id);
+
+          if (!richContent) return null;
+
+          return (
+            <div
+              key={field.id}
+              className="preview-description-rich-text"
+              style={{ color: fallbackColor }}
+            >
+              {richContent}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -724,6 +805,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     //      2. 或模块内包含 specific-item-* 模式的字段（旧模板兼容）
     //      3. 或该模块对应的容器类型为 'list'（自定义模板的 list 容器）
     const containerType = template.containers?.find(c => c.id === module.id)?.type;
+    const isCustomRichDescription = containerType === 'description' && module.id.startsWith('custom-desc-');
     const isListTableSpecific = module.id === 'specific' && (
       skill.id === 'social-icon-v1' || skill.id === 'list-table-v1' || template.category === 'list-table'
     ) || containerType === 'list' || fields.some(f => f.id.startsWith('specific-item-')) || images.some(img => img.id.startsWith('specific-item-img-'));
@@ -743,10 +825,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             renderListTable(module)
           ) : (
             <>
-              {/* overall模块和description类型容器：使用bullet point列表展示 */}
-              {module.id === 'overall' || template.containers?.find(c => c.id === module.id)?.type === 'description'
-                ? renderBulletPoints(fields, module.id)
-                : renderFieldCards(fields)}
+              {isCustomRichDescription
+                ? renderRichDescriptionModule(fields)
+                : module.id === 'overall' || containerType === 'description'
+                  ? renderBulletPoints(fields, module.id)
+                  : renderFieldCards(fields)}
               {renderImages(module, images)}
             </>
           )}

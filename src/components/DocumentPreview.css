@@ -416,6 +416,21 @@
   border: none;
 }
 
+/* 新版正文描述：按编辑区所见即所得展示，不自动补项目符号或续行缩进 */
+.preview-description-rich-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-description-rich-text {
+  font-size: 14px;
+  line-height: 1.9;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 字段标签（如"徽章描述"等）：预览中不显示 */
 .preview-field-label {
   display: none; /* 隐藏系统默认描述文字 */
