@@ -2673,7 +2673,14 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                 type="text"
                 className="header-inline-input header-name-input"
                 value={localTemplateName}
-                onChange={(e) => setLocalTemplateName(e.target.value)}
+                onChange={(e) => {
+                  setLocalTemplateName(e.target.value);
+                  // 同步主题名称字段
+                  const themeFieldId = template.textFields.some(f => f.id === 'overall-theme-name')
+                    ? 'overall-theme-name'
+                    : 'theme-name';
+                  handleTextChange(themeFieldId, e.target.value);
+                }}
                 placeholder="输入模板名称"
                 autoFocus
                 onBlur={() => setEditingHeaderField(null)}
@@ -2925,6 +2932,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                       ? 'overall-theme-name' 
                       : 'theme-name';
                     handleTextChange(fieldId, e.target.value);
+                    // 同步头部模板名称
+                    setLocalTemplateName(e.target.value);
                   }}
                   placeholder="请输入主题名称"
                 />
