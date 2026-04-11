@@ -897,6 +897,7 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
   const listDispatchersRef = useRef<Record<string, KeyboardEventDispatcher>>({}); // 列表键盘事件分发器
   const listInputHandlersRef = useRef<Record<string, ReturnType<typeof createInputHandler>>>({}); // 列表输入处理器
   const isComposingRef = useRef(false); // IME组合状态（中文输入法等）
+  const skipNextDescriptionInputRef = useRef<Record<string, boolean>>({}); // Enter 直接操作 DOM 后跳过 onInput 重复处理
 
   // 获取或创建指定字段的列表状态管理器
   const getListStateManager = useCallback((fieldId: string): ListStateManager => {
@@ -1221,66 +1222,22 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
       return;
     }
 
-    const nativeEvent = event.nativeEvent as InputEvent;
-    const inputType = nativeEvent.inputType;
-    const isInputComposing = Boolean((nativeEvent as InputEvent & { isComposing?: boolean }).isComposing);
-    const isEnterInput = inputType === 'insertParagraph' || inputType === 'insertLineBreak';
-
-    // Enter 改在 beforeinput 阶段统一处理，避免 contentEditable / IME 时序导致第一次回车被吞掉。
-    if (isEnterInput && !isInputComposing) {
-      event.preventDefault();
-
-      const currentValue = textValues[fieldId] || '';
-      const fallbackColor = normalizeDescriptionColor(textValues[getDescriptionColorFieldId(fieldId)]);
-      const liveHtml = stripDescriptionEditorTrailingBreak(event.currentTarget.innerHTML || currentValue);
-      const livePlainText = descriptionHtmlToPlainText(liveHtml);
-      const selection = getDescriptionSelectionOffsets(event.currentTarget)
-        || descriptionSelectionRangesRef.current[fieldId]
-        || { start: livePlainText.length, end: livePlainText.length };
-      const { start, end } = selection;
-      const historyBaseSnapshot = captureDescriptionSnapshot(fieldId, liveHtml, selection, fallbackColor);
-      const dispatcher = getListDispatcher(fieldId);
-
-      const result = dispatcher.dispatch({
-        key: 'Enter',
-        shiftKey: inputType === 'insertLineBreak',
-        ctrlKey: false,
-        altKey: false,
-        metaKey: false,
-        preventDefault: () => undefined,
-      } as KeyboardEvent, livePlainText, start, end);
-
-      descriptionPendingSnapshotRef.current[fieldId] = null;
-
-      if (result.handled && result.newText !== undefined) {
-        const newHtml = descriptionPlainTextToHtml(result.newText);
-        handleDescriptionTextChange(fieldId, newHtml, {
-          start: result.newCursorPos ?? start,
-          end: result.newCursorPos ?? start
-        }, fallbackColor, historyBaseSnapshot);
-        return;
-      }
-
-      const insertion = '\n';
-      const nextValue = insertDescriptionTextIntoHtml(liveHtml, start, end, insertion, fallbackColor);
-      const nextCursor = start + insertion.length;
-
-      handleDescriptionTextChange(fieldId, nextValue, {
-        start: nextCursor,
-        end: nextCursor
-      }, fallbackColor, historyBaseSnapshot);
-      return;
-    }
-
-    // 在浏览器真正改写 DOM 前记录快照，供 Ctrl/Cmd+Z 撤销普通输入。
+    // Enter 已迁移到 keydown 阶段直接操作 DOM，beforeinput 不再处理。
+    // 仅在浏览器真正改写 DOM 前记录快照，供 Ctrl/Cmd+Z 撤销普通输入。
     if (isComposingRef.current) {
       return;
     }
 
     descriptionPendingSnapshotRef.current[fieldId] = captureDescriptionSnapshot(fieldId);
-  }, [captureDescriptionSnapshot, getListDispatcher, handleDescriptionTextChange, textValues]);
+  }, [captureDescriptionSnapshot, textValues]);
 
   const handleDescriptionInput = useCallback((fieldId: string, event: React.FormEvent<HTMLDivElement>) => {
+    // Enter 直接操作 DOM 后跳过 onInput 重复处理。
+    if (skipNextDescriptionInputRef.current[fieldId]) {
+      skipNextDescriptionInputRef.current[fieldId] = false;
+      return;
+    }
+
     // 如果正在IME组合中（如中文输入法），跳过处理，避免重复转义。
     if (isComposingRef.current) {
       return;
@@ -1430,8 +1387,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
     }
 
     // ===== 使用列表编辑工具处理键盘事件 =====
-    // Backspace / Tab 仍在 keydown 阶段处理；Enter 已迁移到 beforeinput，避免 contentEditable 回车时序冲突。
-    if (['Backspace', 'Tab'].includes(event.key)) {
+    // Enter / Backspace / Tab 均在 keydown 阶段处理，通过直接操作 DOM 避免 React 重渲染时序问题。
+    if (event.key === 'Enter' || event.key === 'Backspace' || event.key === 'Tab') {
       const dispatcher = getListDispatcher(fieldId);
       const historyBaseSnapshot = captureDescriptionSnapshot(fieldId, liveHtml, selection, fallbackColor);
       
@@ -1450,15 +1407,108 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
         event.preventDefault();
 
         const newHtml = descriptionPlainTextToHtml(result.newText);
+        const newCursorPos = result.newCursorPos ?? start;
 
+        // ===== Enter 直接操作 DOM，避免 React 重渲染时序问题 =====
+        if (event.key === 'Enter') {
+          const editor = descriptionEditorRefs.current[fieldId];
+          if (editor) {
+            // 直接设置 DOM 内容（含尾部占位）
+            editor.innerHTML = ensureDescriptionEditorTrailingBreak(newHtml);
+            // 立即恢复光标，不等 React 重渲染
+            setDescriptionSelectionOffsets(editor, newCursorPos, newCursorPos);
+            // 标记跳过后续 onInput 重复处理
+            skipNextDescriptionInputRef.current[fieldId] = true;
+          }
+          // 同步更新 state（此时 DOM 已经是最新的）
+          const sanitizedValue = sanitizeDescriptionRichHtml(newHtml, fallbackColor);
+          const resolvedSelection = { start: newCursorPos, end: newCursorPos };
+
+          if (!isApplyingDescriptionHistoryRef.current && historyBaseSnapshot) {
+            recordDescriptionHistory(fieldId, historyBaseSnapshot);
+            recordDescriptionHistory(fieldId, {
+              value: sanitizedValue,
+              selection: resolvedSelection,
+              fallbackColor
+            });
+          }
+
+          const plainTextValue = descriptionHtmlToPlainText(sanitizedValue);
+          if (!plainTextValue.trim()) {
+            setTextValues(prev => ({ ...prev, [fieldId]: '' }));
+            descriptionSelectionRangesRef.current[fieldId] = { start: 0, end: 0 };
+            setActiveDescriptionSelection({ fieldId, start: 0, end: 0, color: null });
+          } else {
+            setTextValues(prev => ({ ...prev, [fieldId]: sanitizedValue }));
+            descriptionSelectionRangesRef.current[fieldId] = resolvedSelection;
+            setActiveDescriptionSelection({
+              fieldId,
+              start: newCursorPos,
+              end: newCursorPos,
+              color: null
+            });
+          }
+          // 调度光标恢复，确保 React 重渲染覆盖 DOM 后光标仍能正确定位
+          focusDescriptionField(fieldId, newCursorPos, newCursorPos);
+          return;
+        }
+
+        // Backspace / Tab 走原有 handleDescriptionTextChange 流程
         handleDescriptionTextChange(fieldId, newHtml, {
-          start: result.newCursorPos ?? start,
-          end: result.newCursorPos ?? start
+          start: newCursorPos,
+          end: newCursorPos
         }, fallbackColor, historyBaseSnapshot);
         return;
       }
+
+      // Enter 未被 dispatcher 处理（fallback）
+      if (event.key === 'Enter' && !result.handled) {
+        event.preventDefault();
+
+        const insertion = '\n';
+        const nextValue = insertDescriptionTextIntoHtml(liveHtml, start, end, insertion, fallbackColor);
+        const nextCursor = start + insertion.length;
+
+        const editor = descriptionEditorRefs.current[fieldId];
+        if (editor) {
+          editor.innerHTML = ensureDescriptionEditorTrailingBreak(nextValue);
+          setDescriptionSelectionOffsets(editor, nextCursor, nextCursor);
+          skipNextDescriptionInputRef.current[fieldId] = true;
+        }
+
+        const sanitizedValue = sanitizeDescriptionRichHtml(nextValue, fallbackColor);
+        const resolvedSelection = { start: nextCursor, end: nextCursor };
+
+        if (!isApplyingDescriptionHistoryRef.current && historyBaseSnapshot) {
+          recordDescriptionHistory(fieldId, historyBaseSnapshot);
+          recordDescriptionHistory(fieldId, {
+            value: sanitizedValue,
+            selection: resolvedSelection,
+            fallbackColor
+          });
+        }
+
+        const plainTextValue = descriptionHtmlToPlainText(sanitizedValue);
+        if (!plainTextValue.trim()) {
+          setTextValues(prev => ({ ...prev, [fieldId]: '' }));
+          descriptionSelectionRangesRef.current[fieldId] = { start: 0, end: 0 };
+          setActiveDescriptionSelection({ fieldId, start: 0, end: 0, color: null });
+        } else {
+          setTextValues(prev => ({ ...prev, [fieldId]: sanitizedValue }));
+          descriptionSelectionRangesRef.current[fieldId] = resolvedSelection;
+          setActiveDescriptionSelection({
+            fieldId,
+            start: nextCursor,
+            end: nextCursor,
+            color: null
+          });
+        }
+        // 调度光标恢复，确保 React 重渲染覆盖 DOM 后光标仍能正确定位
+        focusDescriptionField(fieldId, nextCursor, nextCursor);
+        return;
+      }
     }
-  }, [applyDescriptionHistorySnapshot, captureDescriptionSnapshot, getListDispatcher, handleDescriptionTextChange, recordDescriptionHistory, textValues]);
+  }, [applyDescriptionHistorySnapshot, captureDescriptionSnapshot, focusDescriptionField, getListDispatcher, handleDescriptionTextChange, recordDescriptionHistory, textValues]);
 
   // 点击空白区域关闭添加容器菜单
   useEffect(() => {
