@@ -586,7 +586,12 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
     // 克隆参考模板的容器结构（如果有）
     const clonedContainers = refTemplate.containers ? refTemplate.containers.map(container => ({
       ...container,
-      textFields: container.textFields.map(f => ({ ...f, defaultValue: '' })),
+      textFields: container.textFields.map(f => ({
+        ...f,
+        defaultValue: f.id === 'overall-theme-name' ? data.name
+          : f.id === 'overall-version-info' ? getTodayVersion()
+          : '' // 清空默认值，让用户填写新内容
+      })),
       imageSlots: container.imageSlots.map(s => ({ ...s, defaultImage: undefined }))
     })) : undefined;
 

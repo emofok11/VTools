@@ -2693,7 +2693,14 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                 type="text"
                 className="header-inline-input header-version-input"
                 value={localTemplateVersion}
-                onChange={(e) => setLocalTemplateVersion(e.target.value)}
+                onChange={(e) => {
+                  setLocalTemplateVersion(e.target.value);
+                  // 同步版本信息字段
+                  const versionFieldId = template.textFields.some(f => f.id === 'overall-version-info')
+                    ? 'overall-version-info'
+                    : 'version-info';
+                  handleTextChange(versionFieldId, e.target.value);
+                }}
                 placeholder="版本号"
                 autoFocus
                 onBlur={() => setEditingHeaderField(null)}
@@ -2934,6 +2941,8 @@ const [showAddMenu, setShowAddMenu] = useState(false); // 添加容器下拉菜�
                       ? 'overall-version-info' 
                       : 'version-info';
                     handleTextChange(fieldId, e.target.value);
+                    // 同步头部版本号
+                    setLocalTemplateVersion(e.target.value);
                   }}
                   placeholder={getTodayVersion()}
                 />
