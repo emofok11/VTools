@@ -54,7 +54,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     setNetworkError(false);
     try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      // 5秒超时保护：防止 getSession 卡死导致页面永远停在"正在恢复会话"
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Session recovery timeout')), 5000)
+        ),
+      ]);
+      const currentSession = sessionResult.data.session;
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
@@ -74,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.warn('获取会话失败:', error);
-      // 网络异常：标记并显示重试提示
+      // 网络异常或超时：标记并显示重试提示
       setNetworkError(true);
       showError('网络异常，请检查网络连接');
       setIsAdminState(false);
@@ -98,10 +105,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(newSession?.user ?? null);
         setNetworkError(false);
 
-        // 同步管理员状态（失败时静默处理）
+        // 同步管理员状态（失败时静默处理，3秒超时保护）
         if (newSession?.user) {
           try {
-            const admin = await checkIsAdmin(newSession.user.id);
+            const admin = await Promise.race([
+              checkIsAdmin(newSession.user.id),
+              new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+            ]);
             setIsAdminState(admin);
           } catch {
             setIsAdminState(false);

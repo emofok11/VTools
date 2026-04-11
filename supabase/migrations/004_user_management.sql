@@ -32,18 +32,21 @@ AS $$
 $$;
 
 -- 普通用户只能查自己的 profile
+DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
 CREATE POLICY "profiles_select_own"
   ON public.profiles FOR SELECT
   TO authenticated
   USING (auth.uid() = id);
 
 -- 管理员可查所有 profile（通过 SECURITY DEFINER 函数避免递归）
+DROP POLICY IF EXISTS "profiles_select_admin" ON public.profiles;
 CREATE POLICY "profiles_select_admin"
   ON public.profiles FOR SELECT
   TO authenticated
   USING (public.is_admin(auth.uid()));
 
 -- 4. 管理员可更新任意 profile（封禁/解封/改名/角色变更）
+DROP POLICY IF EXISTS "profiles_update_admin" ON public.profiles;
 CREATE POLICY "profiles_update_admin"
   ON public.profiles FOR UPDATE
   TO authenticated
@@ -51,6 +54,7 @@ CREATE POLICY "profiles_update_admin"
   WITH CHECK (public.is_admin(auth.uid()));
 
 -- 5. 管理员可删除任意 profile
+DROP POLICY IF EXISTS "profiles_delete_admin" ON public.profiles;
 CREATE POLICY "profiles_delete_admin"
   ON public.profiles FOR DELETE
   TO authenticated
