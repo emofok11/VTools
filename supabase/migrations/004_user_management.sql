@@ -9,17 +9,25 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- profiles 表增加 role 字段
+-- 如果 role 列已存在且为 TEXT 类型，先转换为 ENUM
+-- 必须在 ADD COLUMN 之前执行，否则 IF NOT EXISTS 会跳过已有列
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'profiles'
+      AND column_name = 'role'
+      AND data_type = 'character varying'
+  ) THEN
+    ALTER TABLE public.profiles
+      ALTER COLUMN role TYPE public.user_role
+      USING role::public.user_role;
+  END IF;
+END $$;
+
+-- profiles 表增加 role 字段（若不存在）
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS role public.user_role NOT NULL DEFAULT 'user';
-
--- 如果 role 列已存在但是 TEXT 类型，转换为 ENUM
-DO $$ BEGIN
-  ALTER TABLE public.profiles
-    ALTER COLUMN role TYPE public.user_role
-    USING role::public.user_role;
-EXCEPTION WHEN others THEN NULL;
-END $$;
 
 -- 2. profiles 表增加 banned 字段（封禁标记 + 时间）
 ALTER TABLE public.profiles
