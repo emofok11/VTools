@@ -34,7 +34,7 @@ const DEFAULT_DESCRIPTION_TEXT_COLOR = '#ECE8E1';
 const DESCRIPTION_COLOR_OPTIONS = ['#ECE8E1', '#FF4655', '#F5D061', '#4ECDC4', '#7AA2FF', '#C792EA'] as const;
 const DESCRIPTION_HISTORY_LIMIT = 100;
 const DESCRIPTION_EDITOR_TRAILING_BREAK_ATTR = 'data-description-trailing-break';
-const DESCRIPTION_EDITOR_TRAILING_BREAK_HTML = `<br ${DESCRIPTION_EDITOR_TRAILING_BREAK_ATTR}="true">`;
+const DESCRIPTION_EDITOR_TRAILING_BREAK_HTML = `<span ${DESCRIPTION_EDITOR_TRAILING_BREAK_ATTR}="true" contenteditable="false">&#8203;</span>`;
 
 // 颜色元数据单独挂在 textValues 上，避免改动现有模版结构。
 function getDescriptionColorFieldId(fieldId: string): string {
@@ -81,7 +81,7 @@ function escapeDescriptionHtml(value: string): string {
 // 清理编辑器渲染时追加的尾部占位换行，避免污染存储和纯文本计算。
 function stripDescriptionEditorTrailingBreak(value?: string): string {
   if (!value) return '';
-  return value.replace(/<br\s+data-description-trailing-break="true"\s*\/?>$/i, '');
+  return value.replace(/<span\s+data-description-trailing-break="true"[^>]*>.*?<\/span>$/i, '');
 }
 
 // 仅在编辑器显示态补一个尾部占位换行，确保末尾空行在 contentEditable 中稳定可见。
@@ -93,7 +93,6 @@ function ensureDescriptionEditorTrailingBreak(value?: string): string {
 
 function isDescriptionEditorTrailingBreakNode(node: Node | null | undefined): boolean {
   return node instanceof HTMLElement
-    && node.tagName.toLowerCase() === 'br'
     && node.getAttribute(DESCRIPTION_EDITOR_TRAILING_BREAK_ATTR) === 'true';
 }
 
