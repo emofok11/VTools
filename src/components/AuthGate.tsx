@@ -195,12 +195,10 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             setError('操作过于频繁，请稍后再试');
             setSubmitCooldown(60); // 429后强制冷却60秒
           }
-          // 检测"邮箱未验证"错误 → 引导至验证码步骤（不再自动resend，避免额外请求触发429）
+          // 检测"邮箱未验证"错误 → 直接提示（暂不跳转OTP验证）
           else if (translated === 'ACCOUNT_NOT_CONFIRMED') {
-            setError('账号未验证，即将跳转到验证页面...');
-            // 直接跳转OTP步骤，由用户手动点击"重新发送"来获取验证码
-            enterOtpStep();
-          } else {
+            setError('账号未验证，请联系管理员或稍后重试');
+          }          } else {
             setError(translated);
           }
         } else {
@@ -222,9 +220,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             setError(translateError(authError.message, 'register'));
           }
         } else if (!data.session) {
-          // 注册成功，需邮箱确认 → 进入 OTP 验证步骤
-          showSuccess('注册成功，验证码已发送至您的邮箱');
-          enterOtpStep();
+          // 注册成功，需邮箱确认（当前跳过OTP，直接提示用户）
+          showSuccess('注册成功，请使用注册的邮箱和密码登录');
         }
         // data.session 存在 → 自动登录成功，onAuthStateChange 会更新状态
       }
