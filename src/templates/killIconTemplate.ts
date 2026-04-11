@@ -18,6 +18,8 @@ export const killIconTemplate: TemplateDefinition = {
   createdAt: '2025-01-01T00:00:00.000Z',
   updatedAt: '2025-10-09T00:00:00.000Z',
   version: getTodayVersion(),
+  isLocked: true,
+  isOfficial: true,
   
   // 文字字段配置
   textFields: [

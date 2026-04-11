@@ -193,7 +193,6 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  position: relative;
 }
 
 /* 新建模版卡片特殊样式 */
@@ -312,58 +311,7 @@
   font-weight: 600;
 }
 
-/* 卡片角标（官方/锁定） */
-.card-badges {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  gap: 4px;
-  z-index: 2;
-}
 
-.badge-official {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: #FF4655;
-  color: white;
-  font-size: 12px;
-  border-radius: 4px;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(255, 70, 85, 0.4);
-}
-
-.badge-locked {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: rgba(15, 25, 35, 0.75);
-  color: #ECE8E1;
-  font-size: 11px;
-  border-radius: 4px;
-}
-
-/* 管理员标记操作按钮 */
-.btn-flag-action {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  opacity: 0.5;
-}
-
-.btn-flag-action:hover {
-  opacity: 1;
-  background: rgba(15, 25, 35, 0.08);
-}
 
 .card-version {
   padding: 3px 8px;

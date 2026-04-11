@@ -2,6 +2,8 @@
 
 import { TemplateDefinition, TemplateCategory } from '../types/template';
 
+const BUILT_IN_TEMPLATE_IDS = new Set(['template-kill-icon-001', 'template-list-table-001']);
+
 class TemplateRegistry {
   private templates: Map<string, TemplateDefinition> = new Map();
   private categoryIndex: Map<TemplateCategory, Set<string>> = new Map();
@@ -42,12 +44,25 @@ class TemplateRegistry {
     }
   }
 
+  private normalizeTemplateFlags(template: TemplateDefinition): TemplateDefinition {
+    if (!BUILT_IN_TEMPLATE_IDS.has(template.id)) {
+      return template;
+    }
+
+    return {
+      ...template,
+      isLocked: true,
+      isOfficial: true
+    };
+  }
+
   // 注册模版
   register(template: TemplateDefinition, save: boolean = true): void {
-    this.templates.set(template.id, template);
-    const categorySet = this.categoryIndex.get(template.category);
+    const normalizedTemplate = this.normalizeTemplateFlags(template);
+    this.templates.set(normalizedTemplate.id, normalizedTemplate);
+    const categorySet = this.categoryIndex.get(normalizedTemplate.category);
     if (categorySet) {
-      categorySet.add(template.id);
+      categorySet.add(normalizedTemplate.id);
     }
     if (save) {
       this.saveCustomTemplates();
@@ -72,7 +87,7 @@ class TemplateRegistry {
   setLocked(templateId: string, locked: boolean): void {
     const template = this.templates.get(templateId);
     if (template) {
-      template.isLocked = locked;
+      template.isLocked = BUILT_IN_TEMPLATE_IDS.has(templateId) ? true : locked;
       this.saveCustomTemplates();
     }
   }
@@ -81,7 +96,7 @@ class TemplateRegistry {
   setOfficial(templateId: string, official: boolean): void {
     const template = this.templates.get(templateId);
     if (template) {
-      template.isOfficial = official;
+      template.isOfficial = BUILT_IN_TEMPLATE_IDS.has(templateId) ? true : official;
       this.saveCustomTemplates();
     }
   }

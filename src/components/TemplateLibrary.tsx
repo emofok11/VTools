@@ -6,7 +6,6 @@ import { createTemplateFromFigma } from '../lib/figmaImporter';
 import { getTodayVersion } from '../lib/templateUtils';
 import { analyzeImage } from '../lib/imageAnalyzer';
 import { supabaseService } from '../lib/supabaseService';
-import { useAuth } from '../contexts/AuthContext';
 import TemplateEditor from './TemplateEditor';
 import KillIconEditor from './KillIconEditor';
 import CreateTemplateModal from './CreateTemplateModal';
@@ -37,7 +36,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
     imageValues: Record<string, ImageData>;
   } | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // 刷新触发器，用于模板列表刷新
-  const { isAdmin } = useAuth(); // 管理员权限，用于锁定/官方标记操作
   const previewRef = useRef<HTMLDivElement>(null);
 
   // 加载历史记录和自定义模板
@@ -58,11 +56,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
           templatesData.forEach(item => {
             // 校验数据有效性，跳过无效数据
             if (item?.id && item?.data) {
-              // 内置模版强制标记为官方+锁定
-              if (BUILT_IN_TEMPLATE_IDS.includes(item.id)) {
-                item.data.isLocked = true;
-                item.data.isOfficial = true;
-              }
               templateRegistry.register(item.data);
             }
           });
@@ -143,9 +136,9 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
     
     // 分类过滤
     if (selectedCategory === 'built-in') {
-      result = result.filter(t => t.isOfficial);
+      result = result.filter(t => BUILT_IN_TEMPLATE_IDS.includes(t.id));
     } else if (selectedCategory === 'custom') {
-      result = result.filter(t => !t.isOfficial);
+      result = result.filter(t => !BUILT_IN_TEMPLATE_IDS.includes(t.id));
     } else if (selectedCategory !== 'all' && selectedCategory !== 'history') {
       result = result.filter(t => t.category === selectedCategory);
     }
@@ -728,7 +721,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
         className={`tab-btn ${selectedCategory === 'built-in' ? 'active' : ''}`}
         onClick={() => setSelectedCategory('built-in')}
       >
-        官方模版
+        固定模版
       </button>
       <button
         className={`tab-btn ${selectedCategory === 'custom' ? 'active' : ''}`}
@@ -745,15 +738,10 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
     </div>
   );
 
-  // 删除模版（锁定模版不可删除）
+  // 删除模版（固定模版不可删除）
   const handleDeleteTemplate = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    const template = templateRegistry.get(id);
-    if (!template) return;
-    if (template.isLocked) {
-      alert('该模版已锁定，无法删除');
-      return;
-    }
+    if (BUILT_IN_TEMPLATE_IDS.includes(id)) return;
     if (window.confirm('确定要删除这个模版吗？')) {
       templateRegistry.unregister(id);
       // 强制重新渲染列表
@@ -761,38 +749,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
       setTimeout(() => setSearchQuery(prev => prev.trim()), 0);
     }
   }, []);
-
-  // 切换模版锁定状态（仅管理员）
-  const handleToggleLock = useCallback(async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (!isAdmin) return;
-    const template = templateRegistry.get(id);
-    if (!template) return;
-    const newLocked = !template.isLocked;
-    templateRegistry.setLocked(id, newLocked);
-    try {
-      await supabaseService.updateTemplateFlags(id, { isLocked: newLocked });
-    } catch (e) {
-      console.error('更新锁定状态失败:', e);
-    }
-    setRefreshTrigger(prev => prev + 1);
-  }, [isAdmin]);
-
-  // 切换模版官方状态（仅管理员）
-  const handleToggleOfficial = useCallback(async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (!isAdmin) return;
-    const template = templateRegistry.get(id);
-    if (!template) return;
-    const newOfficial = !template.isOfficial;
-    templateRegistry.setOfficial(id, newOfficial);
-    try {
-      await supabaseService.updateTemplateFlags(id, { isOfficial: newOfficial });
-    } catch (e) {
-      console.error('更新官方状态失败:', e);
-    }
-    setRefreshTrigger(prev => prev + 1);
-  }, [isAdmin]);
 
   // 渲染模版卡片
   const renderTemplateCard = (template: TemplateDefinition) => (
@@ -809,11 +765,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
 <span className="placeholder-icon">◆</span>
           </div>
         )}
-        {/* 官方/锁定标识 */}
-        <div className="card-badges">
-          {template.isOfficial && <span className="badge-official" title="官方模版">★</span>}
-          {template.isLocked && <span className="badge-locked" title="已锁定">🔒</span>}
-        </div>
       </div>
       <div className="card-content">
         <h3 className="card-title">{template.name}</h3>
@@ -828,7 +779,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
           更新于 {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' })}
         </span>
         <div className="card-actions">
-          {!template.isLocked && (
+          {!BUILT_IN_TEMPLATE_IDS.includes(template.id) && (
             <button 
               className="btn-delete-history" 
               onClick={(e) => handleDeleteTemplate(e, template.id)}
@@ -836,24 +787,6 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
             >
               🗑️
             </button>
-          )}
-          {isAdmin && (
-            <>
-              <button
-                className="btn-flag-action"
-                onClick={(e) => handleToggleLock(e, template.id)}
-                title={template.isLocked ? '解锁模版' : '锁定模版'}
-              >
-                {template.isLocked ? '🔓' : '🔒'}
-              </button>
-              <button
-                className="btn-flag-action"
-                onClick={(e) => handleToggleOfficial(e, template.id)}
-                title={template.isOfficial ? '取消官方' : '设为官方'}
-              >
-                {template.isOfficial ? '☆' : '★'}
-              </button>
-            </>
           )}
           <button className="btn-use">使用模版</button>
         </div>
@@ -928,10 +861,10 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
           )}
         </div>
       ) : selectedCategory === 'built-in' ? (
-        /* 官方模版Tab：只显示官方模版 */
+        /* 固定模版Tab：只显示固定模版 */
         <div className="template-section">
           <div className="template-section-header">
-            <h3 className="template-section-title">官方模版</h3>
+            <h3 className="template-section-title">固定模版</h3>
           </div>
           <div className="templates-grid">
             {templates.map(renderTemplateCard)}
@@ -968,14 +901,14 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
       ) : (
         /* 全部模版Tab：分区展示 */
         <>
-          {/* 官方模版分区 */}
-          {templates.filter(t => t.isOfficial).length > 0 && (
+          {/* 固定模版分区 */}
+          {templates.filter(t => BUILT_IN_TEMPLATE_IDS.includes(t.id)).length > 0 && (
             <div className="template-section">
               <div className="template-section-header">
-                <h3 className="template-section-title">官方模版</h3>
+                <h3 className="template-section-title">固定模版</h3>
               </div>
               <div className="templates-grid">
-                {templates.filter(t => t.isOfficial).map(renderTemplateCard)}
+                {templates.filter(t => BUILT_IN_TEMPLATE_IDS.includes(t.id)).map(renderTemplateCard)}
               </div>
             </div>
           )}
@@ -986,7 +919,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
               <h3 className="template-section-title">自定义模版</h3>
             </div>
             <div className="templates-grid">
-              {templates.filter(t => !t.isOfficial).map(renderTemplateCard)}
+              {templates.filter(t => !BUILT_IN_TEMPLATE_IDS.includes(t.id)).map(renderTemplateCard)}
               {/* 新建模版卡片 - 始终显示在最后 */}
               <div
                 className="template-card create-card"
