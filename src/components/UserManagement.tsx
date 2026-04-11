@@ -422,20 +422,15 @@ const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                           角色
                         </button>
                       )}
-                      <button
-                        className="um-action-btn delete"
-                        onClick={() => openModal('delete', u)}
-                        disabled={isSelf(u.id) || u.role === 'super_admin'}
-                        title={
-                          isSelf(u.id)
-                            ? '不能删除自己'
-                            : u.role === 'super_admin'
-                              ? '不能删除超级管理员'
-                              : ''
-                        }
-                      >
-                        删除
-                      </button>
+                      {/* 自己和超级管理员不显示删除按钮 */}
+                      {!isSelf(u.id) && u.role !== 'super_admin' && (
+                        <button
+                          className="um-action-btn delete"
+                          onClick={() => openModal('delete', u)}
+                        >
+                          删除
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
