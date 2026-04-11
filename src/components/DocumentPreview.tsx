@@ -819,7 +819,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     //      2. 或模块内包含 specific-item-* 模式的字段（旧模板兼容）
     //      3. 或该模块对应的容器类型为 'list'（自定义模板的 list 容器）
     const containerType = template.containers?.find(c => c.id === module.id)?.type;
-    const isCustomRichDescription = containerType === 'description' && module.id.startsWith('custom-desc-');
     const isListTableSpecific = module.id === 'specific' && (
       skill.id === 'social-icon-v1' || skill.id === 'list-table-v1' || template.category === 'list-table'
     ) || containerType === 'list' || fields.some(f => f.id.startsWith('specific-item-')) || images.some(img => img.id.startsWith('specific-item-img-'));
@@ -839,11 +838,9 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             renderListTable(module)
           ) : (
             <>
-              {isCustomRichDescription
-                ? renderRichDescriptionModule(fields)
-                : module.id === 'overall' || containerType === 'description'
-                  ? renderBulletPoints(fields, module.id)
-                  : renderFieldCards(fields)}
+              {module.id === 'overall' || containerType === 'description'
+                ? renderBulletPoints(fields, module.id)
+                : renderFieldCards(fields)}
               {renderImages(module, images)}
             </>
           )}
