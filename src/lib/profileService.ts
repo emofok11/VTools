@@ -22,15 +22,15 @@ export async function checkUsernameUnique(username: string): Promise<boolean> {
   return data.length === 0;
 }
 
-/** 创建用户 profile（注册时调用） */
+/** 创建用户 profile（注册时调用，使用 upsert 保证幂等） */
 export async function createProfile(userId: string, username: string): Promise<boolean> {
   const { error } = await supabase
     .from('profiles')
-    .insert({
+    .upsert({
       id: userId,
       username,
       last_name_change_at: null,
-    });
+    }, { onConflict: 'id' });
 
   if (error) {
     console.warn('创建 profile 失败:', error.message);
@@ -66,7 +66,7 @@ export async function getProfile(userId: string): Promise<{
     .from('profiles')
     .select('username, last_name_change_at')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.warn('获取 profile 失败:', error.message);
