@@ -3,15 +3,23 @@
 -- 需在 Supabase Dashboard → SQL Editor 中执行
 -- ============================================
 
--- 1. profiles 表增加 role 字段（super_admin / admin / user）
-ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+-- 1. 创建 role 枚举类型（Supabase Dashboard 会自动识别为下拉选项）
+DO $$ BEGIN
+  CREATE TYPE public.user_role AS ENUM ('super_admin', 'admin', 'user');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- 添加 CHECK 约束：role 只能是合法枚举值，防止手动输入非法角色
+-- profiles 表增加 role 字段
 ALTER TABLE public.profiles
-  DROP CONSTRAINT IF EXISTS profiles_role_check;
-ALTER TABLE public.profiles
-  ADD CONSTRAINT profiles_role_check CHECK (role IN ('super_admin', 'admin', 'user'));
+  ADD COLUMN IF NOT EXISTS role public.user_role NOT NULL DEFAULT 'user';
+
+-- 如果 role 列已存在但是 TEXT 类型，转换为 ENUM
+DO $$ BEGIN
+  ALTER TABLE public.profiles
+    ALTER COLUMN role TYPE public.user_role
+    USING role::public.user_role;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 -- 2. profiles 表增加 banned 字段（封禁标记 + 时间）
 ALTER TABLE public.profiles
