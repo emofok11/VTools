@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS public.templates (
   category TEXT,
   data JSONB,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  is_locked BOOLEAN NOT NULL DEFAULT false,
+  is_official BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

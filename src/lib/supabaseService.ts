@@ -35,7 +35,14 @@ export const supabaseService = {
         console.warn('查询 templates 表失败:', error.message);
         return [];
       }
-      return data || [];
+      // 将数据库的 is_locked / is_official 映射回 TemplateDefinition 对象
+      return (data || []).map((item: any) => {
+        if (item.data) {
+          item.data.isLocked = item.is_locked ?? false;
+          item.data.isOfficial = item.is_official ?? false;
+        }
+        return item;
+      });
     } catch (e) {
       console.warn('获取模版数据异常:', e);
       return [];
@@ -59,6 +66,8 @@ export const supabaseService = {
           category: template.category,
           data: template,
           user_id: userId,
+          is_locked: template.isLocked ?? false,
+          is_official: template.isOfficial ?? false,
           updated_at: new Date().toISOString()
         });
 
@@ -68,6 +77,34 @@ export const supabaseService = {
       return data;
     } catch (e) {
       console.warn('保存模版异常:', e);
+      return null;
+    }
+  },
+
+  // 更新模版标记（锁定/官方状态）
+  async updateTemplateFlags(templateId: string, flags: { isLocked?: boolean; isOfficial?: boolean }) {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        console.warn('用户未登录，无法更新模版标记');
+        return null;
+      }
+
+      const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (flags.isLocked !== undefined) updateData.is_locked = flags.isLocked;
+      if (flags.isOfficial !== undefined) updateData.is_official = flags.isOfficial;
+
+      const { data, error } = await supabase
+        .from('templates')
+        .update(updateData)
+        .eq('id', templateId);
+
+      if (error) {
+        console.warn('更新模版标记失败:', error.message);
+      }
+      return data;
+    } catch (e) {
+      console.warn('更新模版标记异常:', e);
       return null;
     }
   },

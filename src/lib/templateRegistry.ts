@@ -54,10 +54,11 @@ class TemplateRegistry {
     }
   }
 
-  // 注销模版
+  // 注销模版（锁定模版不可注销）
   unregister(templateId: string): void {
     const template = this.templates.get(templateId);
     if (template) {
+      if (template.isLocked) return; // 锁定模版不可删除
       this.templates.delete(templateId);
       const categorySet = this.categoryIndex.get(template.category);
       if (categorySet) {
@@ -65,6 +66,34 @@ class TemplateRegistry {
       }
       this.saveCustomTemplates();
     }
+  }
+
+  // 更新模版锁定状态
+  setLocked(templateId: string, locked: boolean): void {
+    const template = this.templates.get(templateId);
+    if (template) {
+      template.isLocked = locked;
+      this.saveCustomTemplates();
+    }
+  }
+
+  // 更新模版官方状态
+  setOfficial(templateId: string, official: boolean): void {
+    const template = this.templates.get(templateId);
+    if (template) {
+      template.isOfficial = official;
+      this.saveCustomTemplates();
+    }
+  }
+
+  // 获取官方模版
+  getOfficialTemplates(): TemplateDefinition[] {
+    return this.getAll().filter(t => t.isOfficial);
+  }
+
+  // 获取锁定模版
+  getLockedTemplates(): TemplateDefinition[] {
+    return this.getAll().filter(t => t.isLocked);
   }
 
   // 获取模版

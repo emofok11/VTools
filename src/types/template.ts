@@ -123,6 +123,8 @@ export interface TemplateDefinition {
   imageSlots: ImageSlotConfig[];
   previewLayout: PreviewLayout; // 预览布局配置
   containers?: ContainerPart[]; // 容器结构（用于自定义模板按模块渲染）
+  isLocked?: boolean;           // 是否锁定（锁定后不可编辑/删除）
+  isOfficial?: boolean;         // 是否官方模版（展示特殊标识）
 }
 
 // 预览布局配置
