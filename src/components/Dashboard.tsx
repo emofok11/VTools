@@ -42,10 +42,11 @@ const TOOL_MODULES: ToolModule[] = [
 interface DashboardProps {
   onEnterModule: (moduleId: string) => void;
   onOpenSettings: () => void;
+  onOpenUserManagement: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onEnterModule, onOpenSettings }) => {
-  const { user, signOut } = useAuth();
+const Dashboard: React.FC<DashboardProps> = ({ onEnterModule, onOpenSettings, onOpenUserManagement }) => {
+  const { user, signOut, isAdmin } = useAuth();
 
   /** 获取显示名称：优先用户名，回退邮箱前缀 */
   const displayName = user?.user_metadata?.username || (user?.email ? user.email.split('@')[0] : '');
@@ -62,6 +63,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onEnterModule, onOpenSettings }) 
         </div>
         <div className="topbar-right">
           <span className="topbar-slogan">TACTICAL DESIGN SYSTEM</span>
+          {/* 管理员入口 */}
+          {isAdmin && (
+            <button className="topbar-admin-btn" onClick={onOpenUserManagement}>用户管理</button>
+          )}
           {/* 用户信息与登出按钮 */}
           {user && (
             <div className="topbar-user">

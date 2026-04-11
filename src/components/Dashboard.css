@@ -122,6 +122,27 @@
   text-transform: uppercase;
 }
 
+/* 管理员入口按钮 */
+.topbar-admin-btn {
+  font-family: var(--font-tungsten);
+  font-size: 13px;
+  font-weight: normal;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+  padding: 4px 12px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.topbar-admin-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
 /* ===== 主内容区 ===== */
 .dashboard-main {
   flex: 1;

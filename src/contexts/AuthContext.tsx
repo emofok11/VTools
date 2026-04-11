@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { getAuthEmailRedirectUrl } from '../lib/supabaseConfig';
+import { isAdmin as checkIsAdmin } from '../lib/profileService';
 import type { User, Session } from '@supabase/supabase-js';
 import { useToast, default as Toast } from '../components/Toast';
 
@@ -19,6 +20,7 @@ interface AuthContextType {
   loading: boolean;                            // 初始化加载状态
   sessionExpired: boolean;                     // 会话是否过期（用于提示用户）
   networkError: boolean;                       // 网络是否异常（用于显示重试按钮）
+  isAdmin: boolean;                            // 当前用户是否为管理员
   signOut: () => Promise<void>;                // 登出方法
   refreshSession: () => Promise<void>;         // 刷新会话（更新user_metadata等）
   clearSessionExpired: () => void;             // 清除过期提示
@@ -41,6 +43,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true); // 初始化时为 true，等待会话恢复
   const [sessionExpired, setSessionExpired] = useState(false);
   const [networkError, setNetworkError] = useState(false); // 网络异常标记
+  const [adminLoading, setAdminLoading] = useState(true);  // 管理员状态加载中
+  const [isAdminState, setIsAdminState] = useState(false); // 管理员标记
   const { toast, showSuccess, showError, dismiss } = useToast();
   const initSessionRef = useRef<() => void>(); // 保存初始化函数引用，供重试调用
   const authEmailRedirectUrl = getAuthEmailRedirectUrl();
@@ -53,11 +57,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
+
+      // 检查管理员状态
+      if (currentSession?.user) {
+        setAdminLoading(true);
+        const admin = await checkIsAdmin(currentSession.user.id);
+        setIsAdminState(admin);
+        setAdminLoading(false);
+      } else {
+        setIsAdminState(false);
+        setAdminLoading(false);
+      }
     } catch (error) {
       console.warn('获取会话失败:', error);
       // 网络异常：标记并显示重试提示
       setNetworkError(true);
       showError('网络异常，请检查网络连接');
+      setIsAdminState(false);
+      setAdminLoading(false);
     } finally {
       setLoading(false);
     }
@@ -72,10 +89,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 2. 监听认证状态变化（登录、登出、Token 刷新、过期等）
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
+      async (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         setNetworkError(false);
+
+        // 同步管理员状态
+        if (newSession?.user) {
+          const admin = await checkIsAdmin(newSession.user.id);
+          setIsAdminState(admin);
+        } else {
+          setIsAdminState(false);
+        }
 
         // Token 刷新失败 → 会话过期
         if (event === 'TOKEN_REFRESHED' && !newSession) {
@@ -184,7 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{
-      user, session, loading, sessionExpired, networkError,
+      user, session, loading, sessionExpired, networkError, isAdmin: isAdminState,
       signOut, refreshSession, clearSessionExpired, retrySessionRecovery,
       resendVerification,
     }}>
