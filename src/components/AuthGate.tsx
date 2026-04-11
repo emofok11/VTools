@@ -2,12 +2,8 @@ import React, { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from './Toast';
-import OtpInput, { OtpInputHandle } from './OtpInput';
 import { getSupabaseConfig } from '../lib/supabaseConfig';
 import './AuthGate.css';
-
-/** 认证步骤：登录/注册表单 → OTP 验证 */
-type AuthStep = 'form' | 'otp';
 
 /** 认证模式：登录 / 注册 */
 type AuthMode = 'login' | 'register';
@@ -72,7 +68,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const {
     user, loading, sessionExpired, networkError,
     clearSessionExpired, retrySessionRecovery,
-    verifyOtp, resendOtp,
+    resendVerification,
   } = useAuth();
   const { showSuccess, showError } = useToast();
 
@@ -80,7 +76,6 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const serverConfig = getSupabaseConfig();
 
   // 表单状态
-  const [step, setStep] = useState<AuthStep>('form');
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,12 +87,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const SUBMIT_COOLDOWN_MS = 30_000; // 提交冷却期：30秒（防止频繁触发429）
   const RATE_LIMIT_COOLDOWN_MS = 60_000; // 429后的冷却期：60秒
 
-  // OTP 验证状态
-  const [otpVerifying, setOtpVerifying] = useState(false);    // 验证码验证中
-  const otpVerifyingRef = useRef(false); // 同步锁，防止 OTP 验证重复提交
+  // 未验证账号状态（登录时检测到邮箱未确认）
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState(''); // 未验证的邮箱
   const [resendCooldown, setResendCooldown] = useState(0);     // 重发冷却倒计时（秒）
   const [submitCooldown, setSubmitCooldown] = useState(0);     // 提交冷却倒计时（秒，429后显示）
-  const otpInputRef = useRef<OtpInputHandle>(null); // OTP 输入框引用
+  const [resending, setResending] = useState(false);           // 重发确认邮件中
 
   /** 切换登录/注册模式 */
   const toggleMode = useCallback(() => {
@@ -106,17 +100,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
-    setStep('form');
+    setUnconfirmedEmail('');
   }, []);
 
-  /** 返回登录表单（从 OTP 验证界面） */
-  const backToLogin = useCallback(() => {
-    setStep('form');
-    setMode('login');
+  /** 清除未验证提示，返回正常登录状态 */
+  const clearUnconfirmed = useCallback(() => {
+    setUnconfirmedEmail('');
     setError('');
-    setPassword('');
-    setConfirmPassword('');
-    setOtpVerifying(false);
   }, []);
 
   /** 前端表单验证 */
@@ -131,13 +121,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     return null;
   }, [email, password, confirmPassword, mode]);
 
-  /** 进入 OTP 验证步骤 */
-  const enterOtpStep = useCallback(() => {
-    setStep('otp');
-    setResendCooldown(60); // 进入验证步骤即开始 60 秒冷却
-  }, []);
-
-  /** 重发验证码冷却倒计时 */
+  /** 重发确认邮件冷却倒计时 */
   React.useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setTimeout(() => {
@@ -195,9 +179,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             setError('操作过于频繁，请稍后再试');
             setSubmitCooldown(60); // 429后强制冷却60秒
           }
-          // 检测"邮箱未验证"错误 → 直接提示（暂不跳转OTP验证）
+          // 检测"邮箱未验证"错误 → 发送确认邮件并显示提示界面
           else if (translated === 'ACCOUNT_NOT_CONFIRMED') {
-            setError('账号未验证，请联系管理员或稍后重试');
+            setUnconfirmedEmail(email.trim());
+            // 自动发送一封确认邮件
+            resendVerification(email.trim());
+            setResendCooldown(60);
           } else {
             setError(translated);
           }
@@ -220,8 +207,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             setError(translateError(authError.message, 'register'));
           }
         } else if (!data.session) {
-          // 注册成功，需邮箱确认（当前跳过OTP，直接提示用户）
-          showSuccess('注册成功，请使用注册的邮箱和密码登录');
+          // 注册成功，Supabase 已发送确认邮件，提示用户去邮箱点击链接
+          showSuccess('注册成功！确认邮件已发送，请前往邮箱点击确认链接后再登录');
+          // 切换到登录模式
+          setMode('login');
+          setPassword('');
+          setConfirmPassword('');
         }
         // data.session 存在 → 自动登录成功，onAuthStateChange 会更新状态
       }
@@ -231,42 +222,20 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [email, password, mode, validate, showSuccess, enterOtpStep]);
+  }, [email, password, mode, validate, showSuccess, resendVerification]);
 
-  /** OTP 验证码输入完成回调（6位全部填入后自动触发） */
-  const handleOtpComplete = useCallback(async (code: string) => {
-    // 同步锁：防止重复触发验证请求
-    if (otpVerifyingRef.current) return;
-    otpVerifyingRef.current = true;
-    setOtpVerifying(true);
-
-    const result = await verifyOtp(email.trim(), code);
+  /** 重新发送确认邮件（登录时账号未验证场景） */
+  const handleResendVerification = useCallback(async () => {
+    if (resendCooldown > 0 || !unconfirmedEmail) return;
+    setResending(true);
+    const result = await resendVerification(unconfirmedEmail);
     if (result.success) {
-      // 验证成功，onAuthStateChange 会更新 user 状态，自动跳转
+      setResendCooldown(60); // 60 秒冷却
     } else if (result.rateLimited) {
-      // 429频率限制 → 启动冷却倒计时，清空输入框
-      setSubmitCooldown(60);
-      otpInputRef.current?.clear();
-    } else {
-      // 验证失败，清空输入框
-      otpInputRef.current?.clear();
-    }
-
-    otpVerifyingRef.current = false;
-    setOtpVerifying(false);
-  }, [email, verifyOtp]);
-
-  /** 重新发送验证码 */
-  const handleResend = useCallback(async () => {
-    if (resendCooldown > 0) return;
-    const result = await resendOtp(email.trim());
-    if (result.success) {
-      setResendCooldown(60); // 重新开始 60 秒冷却
-    } else if (result.rateLimited) {
-      // 429频率限制 → 启动冷却倒计时，防止用户反复重试
       setResendCooldown(60);
     }
-  }, [email, resendCooldown, resendOtp]);
+    setResending(false);
+  }, [unconfirmedEmail, resendCooldown, resendVerification]);
 
   // ===== 初始化加载中 =====
   if (loading) {
@@ -303,14 +272,14 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         )}
 
         {/* 会话过期提示 */}
-        {sessionExpired && step === 'form' && (
+        {sessionExpired && !unconfirmedEmail && (
           <p className="auth-gate-expired" onClick={clearSessionExpired}>
             登录已过期，请重新登录
           </p>
         )}
 
-        {/* ===== 步骤1：登录/注册表单 ===== */}
-        {step === 'form' && (
+        {/* ===== 登录/注册表单 ===== */}
+        {!unconfirmedEmail && (
           <>
             <form className="auth-gate-form" onSubmit={handleSubmit}>
               {/* 邮箱输入 */}
@@ -385,36 +354,29 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
           </>
         )}
 
-        {/* ===== 步骤2：OTP 验证码输入 ===== */}
-        {step === 'otp' && (
+        {/* ===== 未验证账号提示 ===== */}
+        {unconfirmedEmail && (
           <div className="auth-gate-otp">
-            {/* 提示文字 */}
             <p className="auth-gate-otp-hint">
-              验证码已发送至 <strong>{maskEmail(email.trim())}</strong>
+              确认邮件已发送至 <strong>{maskEmail(unconfirmedEmail)}</strong>
+            </p>
+            <p className="auth-gate-otp-hint" style={{ marginTop: '8px', fontSize: '13px', opacity: 0.8 }}>
+              请前往邮箱点击确认链接完成验证，验证后即可登录
             </p>
 
-            {/* 6 位验证码输入框 */}
-            <OtpInput
-              ref={otpInputRef}
-              onComplete={handleOtpComplete}
-              disabled={otpVerifying}
-            />
-
-            {/* 验证中状态提示 */}
-            {otpVerifying && (
-              <p className="auth-gate-otp-verifying">验证中...</p>
-            )}
-
-            {/* 重新发送验证码按钮 */}
+            {/* 重新发送确认邮件 */}
             <button
-              className="auth-gate-otp-resend"
+              className="auth-gate-btn"
               type="button"
-              onClick={handleResend}
-              disabled={resendCooldown > 0}
+              onClick={handleResendVerification}
+              disabled={resendCooldown > 0 || resending}
+              style={{ marginTop: '16px' }}
             >
-              {resendCooldown > 0
-                ? `重新发送 (${resendCooldown}s)`
-                : '重新发送验证码'
+              {resending
+                ? '发送中...'
+                : resendCooldown > 0
+                  ? `重新发送确认邮件 (${resendCooldown}s)`
+                  : '重新发送确认邮件'
               }
             </button>
 
@@ -423,7 +385,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
               <button
                 className="auth-gate-switch-btn"
                 type="button"
-                onClick={backToLogin}
+                onClick={clearUnconfirmed}
               >
                 返回登录
               </button>
