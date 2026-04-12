@@ -154,15 +154,14 @@
   gap: 0;
 }
 
-/* 顶部红底横条：版本号居左，与标题共用同一红底区域 */
+/* 版本号行：紧贴红框下边沿 */
 .preview-chip-row {
   display: flex;
   justify-content: flex-start; /* 居左 */
   align-items: center;
   gap: 8px;
-  /* 只保留顶部和左右内边距，底部不留空，与标题紧贴 */
-  padding: 16px 40px 0;
-  margin-bottom: 0;
+  padding: 0 40px 12px;
+  margin-top: 0;
   background: #FF4655;
 }
 .preview-chip {
@@ -183,13 +182,12 @@
 }
 
 .preview-header-main {
-  /* 标题区与版本号同在红底内，紧接版本号下方 */
+  /* 标题区与版本号同在红底内，标题在上方 */
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0;
-  /* 红底延伸到标题区，顶部间距缩小让版本号与标题更近 */
-  padding: 8px 40px 24px;
+  padding: 16px 40px 0;
   background: #FF4655;
 }
 
