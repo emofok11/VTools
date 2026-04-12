@@ -855,10 +855,10 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                 )}
                 {!showCategoryInput && (
                   <button
-                    className="btn-secondary"
+                    className="add-category-text-btn"
                     onClick={() => setShowCategoryInput(true)}
                   >
-                    添加新分类
+                    + 添加新分类
                   </button>
                 )}
               </div>
