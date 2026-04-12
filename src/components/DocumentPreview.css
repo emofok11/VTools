@@ -168,19 +168,17 @@
 .preview-chip {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 2px;
-  /* 红底上的版本号：白色半透明背景 */
-  background: rgba(255, 255, 255, 0.15);
+  padding: 0;
+  /* 去掉底板，仅保留白色文字 */
+  background: transparent;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.06em;
 }
 
 /* 主版本号 chip（红底上不需要特殊处理） */
 .preview-chip-primary {
-  background: rgba(255, 255, 255, 0.2);
+  background: transparent;
   color: #ffffff;
 }
 
