@@ -864,15 +864,15 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     <div className={`document-preview ${isModal ? 'modal-mode' : ''}`}>
       {/* 文档头部：版本号 + 大标题居中，对照原稿 */}
       <div className="preview-header">
+        {/* 版本号小字行 */}
+        <div className="preview-chip-row">
+          <span className="preview-chip">{version}</span>
+        </div>
         <div className="preview-header-main">
           <div className="preview-title-section">
             {/* 大标题居中 */}
             <h1 className="preview-main-title">{title}</h1>
           </div>
-        </div>
-        {/* 版本号小字行 - 位于红框下边沿 */}
-        <div className="preview-chip-row">
-          <span className="preview-chip">{version}</span>
         </div>
       </div>
 
