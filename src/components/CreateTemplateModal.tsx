@@ -828,7 +828,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                       添加
                     </button>
                     <button
-                      className="btn-secondary"
+                      className="btn-secondary new-category-cancel-btn"
                       onClick={() => setShowCategoryInput(false)}
                     >
                       取消

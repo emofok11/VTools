@@ -896,6 +896,18 @@
   font-size: 12px;
 }
 
+.new-category-input .new-category-cancel-btn {
+  background: #f7f3ee;
+  color: rgba(15, 25, 35, 0.72);
+  border: 1px solid rgba(15, 25, 35, 0.12);
+}
+
+.new-category-input .new-category-cancel-btn:hover {
+  background: #efe9e2;
+  color: #0f1923;
+  border-color: rgba(15, 25, 35, 0.2);
+}
+
 /* 自定义分类列表 */
 .custom-category-list {
   display: flex;
