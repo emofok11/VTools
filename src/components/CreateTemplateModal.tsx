@@ -828,7 +828,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
                       添加
                     </button>
                     <button
-                      className="btn-secondary new-category-cancel-btn"
+                      className="btn-secondary cancel-action-btn"
                       onClick={() => setShowCategoryInput(false)}
                     >
                       取消
@@ -1037,7 +1037,7 @@ export const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({
         <div className="modal-footer">
           {step === 1 && (
             <>
-              <button className="btn-secondary modal-cancel-btn" onClick={handleClose}>
+              <button className="btn-secondary cancel-action-btn" onClick={handleClose}>
                 取消
               </button>
               <button

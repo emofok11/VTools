@@ -278,16 +278,16 @@
   color: #FF4655;
 }
 
-.modal-footer .modal-cancel-btn {
+.btn-secondary.cancel-action-btn {
   background: #f7f3ee;
   color: rgba(15, 25, 35, 0.78);
-  border: 1px solid rgba(15, 25, 35, 0.14);
+  border: 1px solid rgba(15, 25, 35, 0.16);
 }
 
-.modal-footer .modal-cancel-btn:hover {
+.btn-secondary.cancel-action-btn:hover {
   background: #f1ebe4;
   color: #0f1923;
-  border-color: rgba(15, 25, 35, 0.26);
+  border-color: rgba(15, 25, 35, 0.28);
   box-shadow: 0 1px 3px rgba(15, 25, 35, 0.08);
 }
 
@@ -907,20 +907,6 @@
 .new-category-input .btn-secondary {
   padding: 6px 12px;
   font-size: 12px;
-}
-
-.new-category-input .new-category-cancel-btn {
-  background: #f7f3ee;
-  color: rgba(15, 25, 35, 0.72);
-  border: 1px solid rgba(15, 25, 35, 0.12);
-}
-
-.new-category-input .btn-secondary.new-category-cancel-btn:hover {
-  background: #f3ede6;
-  color: #0f1923;
-  border: 1px solid rgba(15, 25, 35, 0.28);
-  box-shadow: 0 1px 3px rgba(15, 25, 35, 0.08);
-  opacity: 1;
 }
 
 /* 自定义分类列表 */
